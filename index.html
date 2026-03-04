@@ -833,24 +833,34 @@ async function doCheck(site){
   let connected=false,method=null;
   // Try REST API
   try{
-    const r=await fetch(site.url+'/wp-json/link-placer/v1/ping',{signal:AbortSignal.timeout(8000)});
+    const r=await fetch(site.url+'/wp-json/link-placer/v1/ping',{signal:AbortSignal.timeout(8000),mode:'cors'});
     if(r.ok){const j=await r.json();if(j.status==='ok'){connected=true;method=j.method||'plugin/functions';}}
-  }catch(e){}
+  }catch(e){console.log('REST ping failed:',e.message)}
   // Try file
   if(!connected){
     try{
-      const r=await fetch(site.url+'/lp-connector.php?action=ping',{signal:AbortSignal.timeout(8000)});
+      const r=await fetch(site.url+'/lp-connector.php?action=ping',{signal:AbortSignal.timeout(8000),mode:'cors'});
       if(r.ok){const j=await r.json();if(j.status==='ok'){connected=true;method='file';}}
-    }catch(e){}
+    }catch(e){console.log('File ping failed:',e.message)}
   }
+  // Update ALL references to this site
   const s=state.sites.find(x=>x.id===site.id);
-  if(s){s.connected=connected;s.connectionMethod=method;s.lastCheck=new Date().toISOString();}
-  if(state.connectModal&&state.connectModal.id===site.id){
-    state.connectModal.connected=connected;state.connectModal.connectionMethod=method;
+  if(s){
+    s.connected=connected;
+    s.connectionMethod=connected?method:null;
+    s.lastCheck=new Date().toISOString();
   }
-  addLog(connected?'Связь установлена':'Связь не установлена',site.url+(method?' ('+method+')':''));
+  // Also update modal reference if open
+  if(state.connectModal&&state.connectModal.id===site.id){
+    state.connectModal=s||state.connectModal;
+  }
+  if(state.placeModal&&state.placeModal.id===site.id){
+    state.placeModal=s||state.placeModal;
+  }
+  addLog(connected?'Связь установлена':'Связь потеряна',site.url+(method?' ('+method+')':''));
+  saveState();
   state.checkingConnection=null;
-  notify(connected?'Связь установлена ('+method+')':'Связь не установлена — убедитесь что коннектор установлен',connected?'success':'error');
+  notify(connected?'✅ Связь установлена ('+method+')':'❌ Связь отсутствует — установите коннектор',connected?'success':'error');
   render();
 }
 
