@@ -834,29 +834,38 @@ async function doCheck(site){
   // Try REST API
   try{
     const r=await fetch(site.url+'/wp-json/link-placer/v1/ping',{signal:AbortSignal.timeout(8000),mode:'cors'});
-    if(r.ok){const j=await r.json();if(j.status==='ok'){connected=true;method=j.method||'plugin/functions';}}
+    if(r.ok && r.status===200){
+      const text=await r.text();
+      try{
+        const j=JSON.parse(text);
+        if(j && j.status==='ok'){connected=true;method=j.method||'plugin/functions';}
+      }catch(e){}
+    }
   }catch(e){console.log('REST ping failed:',e.message)}
   // Try file
   if(!connected){
     try{
       const r=await fetch(site.url+'/lp-connector.php?action=ping',{signal:AbortSignal.timeout(8000),mode:'cors'});
-      if(r.ok){const j=await r.json();if(j.status==='ok'){connected=true;method='file';}}
+      if(r.ok && r.status===200){
+        const text=await r.text();
+        try{
+          const j=JSON.parse(text);
+          if(j && j.status==='ok'){connected=true;method='file';}
+        }catch(e){}
+      }
     }catch(e){console.log('File ping failed:',e.message)}
   }
-  // Update ALL references to this site
-  const s=state.sites.find(x=>x.id===site.id);
-  if(s){
-    s.connected=connected;
-    s.connectionMethod=connected?method:null;
-    s.lastCheck=new Date().toISOString();
+  // Force update site status
+  for(let i=0;i<state.sites.length;i++){
+    if(state.sites[i].id===site.id){
+      state.sites[i].connected=connected;
+      state.sites[i].connectionMethod=connected?method:null;
+      state.sites[i].lastCheck=new Date().toISOString();
+      break;
+    }
   }
-  // Also update modal reference if open
-  if(state.connectModal&&state.connectModal.id===site.id){
-    state.connectModal=s||state.connectModal;
-  }
-  if(state.placeModal&&state.placeModal.id===site.id){
-    state.placeModal=s||state.placeModal;
-  }
+  state.connectModal=null;
+  state.placeModal=null;
   addLog(connected?'Связь установлена':'Связь потеряна',site.url+(method?' ('+method+')':''));
   saveState();
   state.checkingConnection=null;
