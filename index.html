@@ -199,7 +199,11 @@ function loadState(){
     const s=localStorage.getItem('lp_state');
     if(s){
       const parsed=JSON.parse(s);
-      state.sites=parsed.sites||[];
+      state.sites=(parsed.sites||[]).map(site=>{
+        site.connected=false;
+        site.connectionMethod=null;
+        return site;
+      });
       state.logs=parsed.logs||[];
       state.users=parsed.users||state.users;
     }
