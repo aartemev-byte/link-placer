@@ -159,7 +159,11 @@ add_action('rest_api_init', function() {
         header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
         header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
     });
-    register_rest_route('link-placer/v1','/ping',['methods'=>['GET','OPTIONS'],'callback'=>function(){return ['status'=>'ok','cms'=>'wordpress','method'=>'plugin'];},'permission_callback'=>'__return_true']);
+    register_rest_route('link-placer/v1','/ping',['methods'=>['GET','POST','OPTIONS'],'callback'=>function($req){
+        $secret=$req->get_header('X-LP-Secret');
+        if($secret==='${secret}'){return['status'=>'ok','verified'=>true,'cms'=>'wordpress','method'=>'plugin'];}
+        return['status'=>'ok','cms'=>'wordpress','method'=>'plugin'];
+    },'permission_callback'=>'__return_true']);
     register_rest_route('link-placer/v1','/place',['methods'=>['POST','OPTIONS'],'callback'=>function($req){
         if($req->get_header('X-LP-Secret')!=='${secret}')return new WP_Error('forbidden','',['status'=>403]);
         $p=$req->get_json_params();$html=$p['html']??'';$placement=sanitize_text_field($p['placement']??'homepage');
@@ -191,7 +195,11 @@ header('Content-Type:application/json');header('Access-Control-Allow-Origin:*');
 header('Access-Control-Allow-Headers:Content-Type,X-LP-Secret');header('Access-Control-Allow-Methods:GET,POST,OPTIONS');
 if($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(200);exit;}
 $action=$_GET['action']??'';$secret=$_SERVER['HTTP_X_LP_SECRET']??'';
-if($action==='ping'){echo json_encode(['status'=>'ok','cms'=>'wordpress','method'=>'file']);exit;}
+if($action==='ping'){
+$ps=$_SERVER['HTTP_X_LP_SECRET']??'';
+if($ps==='${secret}'){echo json_encode(['status'=>'ok','verified'=>true,'cms'=>'wordpress','method'=>'file']);}
+else{echo json_encode(['status'=>'ok','cms'=>'wordpress','method'=>'file']);}
+exit;}
 if($secret!=='${secret}'){http_response_code(403);echo json_encode(['error'=>'Invalid secret']);exit;}
 $input=json_decode(file_get_contents('php://input'),true);
 if($action==='place'){$html=$input['html']??'';$placement=sanitize_text_field($input['placement']??'homepage');
@@ -213,8 +221,12 @@ add_action('rest_api_init', function() {
         header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
         header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
     });
-    register_rest_route('link-placer/v1','/ping',['methods'=>['GET','OPTIONS'],
-        'callback'=>function(){return['status'=>'ok','cms'=>'wordpress','method'=>'functions'];},'permission_callback'=>'__return_true']);
+    register_rest_route('link-placer/v1','/ping',['methods'=>['GET','POST','OPTIONS'],
+        'callback'=>function($req) use ($lp_secret){
+            $s=$req->get_header('X-LP-Secret');
+            if($s===$lp_secret){return['status'=>'ok','verified'=>true,'cms'=>'wordpress','method'=>'functions'];}
+            return['status'=>'ok','cms'=>'wordpress','method'=>'functions'];
+        },'permission_callback'=>'__return_true']);
     register_rest_route('link-placer/v1','/place',['methods'=>['POST','OPTIONS'],
         'callback'=>function($req) use ($lp_secret){
             if($req->get_header('X-LP-Secret')!==$lp_secret) return new WP_Error('forbidden','',['status'=>403]);
@@ -251,28 +263,38 @@ async function doCheck(siteId){
 
   let connected=false, method=null;
 
-  // Method 1: REST API (plugin or functions.php)
+  // Method 1: REST API — authenticated ping
   try{
     const ctrl=new AbortController();
     const timer=setTimeout(()=>ctrl.abort(),8000);
-    const r=await fetch(site.url+'/wp-json/link-placer/v1/ping',{signal:ctrl.signal,mode:'cors'});
+    const r=await fetch(site.url+'/wp-json/link-placer/v1/ping',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},
+      body:JSON.stringify({verify:true}),
+      signal:ctrl.signal,mode:'cors'
+    });
     clearTimeout(timer);
     if(r.status===200){
       const t=await r.text();
-      try{const j=JSON.parse(t);if(j.status==='ok'){connected=true;method=j.method||'plugin';}}catch(e){}
+      try{const j=JSON.parse(t);if(j.status==='ok'&&j.verified===true){connected=true;method=j.method||'plugin';}}catch(e){}
     }
   }catch(e){console.log('ping1 fail',e.message)}
 
-  // Method 2: standalone file
+  // Method 2: standalone file — authenticated ping
   if(!connected){
     try{
       const ctrl=new AbortController();
       const timer=setTimeout(()=>ctrl.abort(),8000);
-      const r=await fetch(site.url+'/lp-connector.php?action=ping',{signal:ctrl.signal,mode:'cors'});
+      const r=await fetch(site.url+'/lp-connector.php?action=ping',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},
+        body:JSON.stringify({verify:true}),
+        signal:ctrl.signal,mode:'cors'
+      });
       clearTimeout(timer);
       if(r.status===200){
         const t=await r.text();
-        try{const j=JSON.parse(t);if(j.status==='ok'){connected=true;method='file';}}catch(e){}
+        try{const j=JSON.parse(t);if(j.status==='ok'&&j.verified===true){connected=true;method='file';}}catch(e){}
       }
     }catch(e){console.log('ping2 fail',e.message)}
   }
