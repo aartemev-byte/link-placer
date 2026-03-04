@@ -70,6 +70,10 @@ ol.st code{color:#60a5fa;background:rgba(96,165,250,.1);padding:1px 5px;border-r
 .lr:nth-child(odd){background:rgba(30,41,59,.5)}
 .ur{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:10px;background:rgba(30,41,59,.7);border:1px solid rgba(100,116,139,.15)}
 .ur+.ur{margin-top:8px}
+.link-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;transition:background .15s}
+.link-item:hover{background:rgba(100,116,139,.1)}
+.link-del{background:none;border:none;color:#64748b;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;transition:all .15s;opacity:0.5}
+.link-del:hover{color:#ef4444;opacity:1}
 @media(max-width:768px){.sb{width:60px;overflow:hidden}.sb-logo h1,.sb-logo small,.nb .ll,.sb-ft>div:first-child{display:none}.nb{justify-content:center;padding:14px 0}.mn{margin-left:60px;padding:16px}}
 </style>
 </head>
@@ -91,64 +95,43 @@ function notify(m,t='info'){const e=document.getElementById('nt');e.className='n
 function log(a,d){D.logs.push({t:new Date().toISOString(),a,d,u:D.cu?.id||'—'});sv()}
 function dl(c,f){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:'text/plain'}));a.download=f;a.click()}
 function cp(t){navigator.clipboard.writeText(t).then(()=>notify('Скопировано!')).catch(()=>notify('Ошибка','error'))}
+function baseUrl(s){return s.url.replace(/\/+$/,'')}
 
-// ===== VERIFICATION: uses secret + unique token =====
-// Panel sends: POST with header X-LP-Secret + body {token: <random>}
-// Server must return: {verified: "<same token>"}
-// This guarantees: correct secret + correct version of connector
-
+// ===== CHECK =====
 async function doCheck(sid){
   const site=gs(sid);if(!site)return;
   D.ckid=sid;render();
   let connected=false,method=null;
   const token='tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
-
-  // Try REST API
   try{
     const c=new AbortController();const t=setTimeout(()=>c.abort(),10000);
-    const r=await fetch(site.url.replace(/\/+$/,'')+'/wp-json/lp-api/v2/verify',{
-      method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},
-      body:JSON.stringify({token}),signal:c.signal,mode:'cors'});
+    const r=await fetch(baseUrl(site)+'/wp-json/lp-api/v2/verify',{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({token}),signal:c.signal,mode:'cors'});
     clearTimeout(t);
-    if(r.status===200){
-      const txt=await r.text();
-      try{const j=JSON.parse(txt);if(j.verified===token){connected=true;method=j.method||'plugin';}}catch(e){}
-    }
-  }catch(e){console.log('v1',e.message)}
-
-  // Try file
+    if(r.status===200){const txt=await r.text();try{const j=JSON.parse(txt);if(j.verified===token){connected=true;method=j.method||'plugin';}}catch(e){}}
+  }catch(e){}
   if(!connected){
     try{
       const c=new AbortController();const t=setTimeout(()=>c.abort(),10000);
-      const r=await fetch(site.url.replace(/\/+$/,'')+'/lp-connector.php?action=verify',{
-        method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},
-        body:JSON.stringify({token}),signal:c.signal,mode:'cors'});
+      const r=await fetch(baseUrl(site)+'/lp-connector.php?action=verify',{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({token}),signal:c.signal,mode:'cors'});
       clearTimeout(t);
-      if(r.status===200){
-        const txt=await r.text();
-        try{const j=JSON.parse(txt);if(j.verified===token){connected=true;method='file';}}catch(e){}
-      }
-    }catch(e){console.log('v2',e.message)}
+      if(r.status===200){const txt=await r.text();try{const j=JSON.parse(txt);if(j.verified===token){connected=true;method='file';}}catch(e){}}
+    }catch(e){}
   }
-
-  for(let i=0;i<D.sites.length;i++){
-    if(D.sites[i].id===sid){
-      D.sites[i]={...D.sites[i],connected,connectionMethod:connected?method:null,lastCheck:new Date().toISOString()};
-    }
-  }
+  for(let i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i]={...D.sites[i],connected,connectionMethod:connected?method:null,lastCheck:new Date().toISOString()}}}
   log(connected?'Связь ✓':'Связь ✗',site.url+(method?' ('+method+')':''));
   D.ckid=null;D.modal=null;sv();
-  notify(connected?'✅ Связь установлена ('+method+')':'❌ Нет связи',connected?'success':'error');
+  notify(connected?'✅ Связь ('+method+')':'❌ Нет связи',connected?'success':'error');
   render();
 }
 
+// ===== PLACE =====
 async function doPlace(sid){
   const site=gs(sid);if(!site||!site.connected)return notify('Нет связи','error');
   const html=document.getElementById('ph')?.value?.trim();
   const pl=document.querySelector('.pb.on')?.dataset?.pl||'homepage';
   if(!html)return notify('Вставьте HTML','error');
   const isF=site.connectionMethod==='file';
-  const url=isF?site.url.replace(/\/+$/,'')+'/lp-connector.php?action=place':site.url.replace(/\/+$/,'')+'/wp-json/lp-api/v2/place';
+  const url=isF?baseUrl(site)+'/lp-connector.php?action=place':baseUrl(site)+'/wp-json/lp-api/v2/place';
   try{
     const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({html,placement:pl})});
     const j=await r.json();
@@ -162,7 +145,56 @@ async function doPlace(sid){
   render();
 }
 
-// ===== WP CODE: new endpoint lp-api/v2/verify =====
+// ===== REMOVE LINK =====
+async function doRemoveLink(sid,linkId,linkIdx){
+  const site=gs(sid);if(!site)return;
+  if(!site.connected){
+    // Remove only locally
+    for(let i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links=D.sites[i].links.filter((_,idx)=>idx!==linkIdx)}}
+    log('Ссылка удалена (локально)',site.url);sv();notify('Удалена локально');render();return;
+  }
+  const isF=site.connectionMethod==='file';
+  const url=isF?baseUrl(site)+'/lp-connector.php?action=remove':baseUrl(site)+'/wp-json/lp-api/v2/remove';
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({id:linkId})});
+    const j=await r.json();
+    if(j.status==='removed'){
+      for(let i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links=D.sites[i].links.filter((_,idx)=>idx!==linkIdx)}}
+      log('Ссылка удалена',site.url);sv();notify('✅ Ссылка удалена','success');
+    }else notify('Ошибка удаления','error');
+  }catch(e){notify('Ошибка: '+e.message,'error')}
+  render();
+}
+
+// ===== EXPORT =====
+function exportSiteLinks(sid){
+  const site=gs(sid);if(!site)return;
+  if(!site.links.length)return notify('Нет ссылок','error');
+  let csv='Сайт\tHTML-код\tРазмещение\tДата\n';
+  site.links.forEach(l=>{
+    const pl=l.placement==='sitewide'?'Сквозное':'Главная';
+    csv+=`${site.url}\t${(l.html||l.pv||'').replace(/\t/g,' ').replace(/\n/g,' ')}\t${pl}\t${fmt(l.at)}\n`;
+  });
+  dl(csv,site.name.replace(/[^a-zA-Zа-яА-Я0-9]/g,'_')+'_links.tsv');
+  notify('Экспорт скачан');
+}
+
+function exportAllLinks(){
+  let total=0;
+  let csv='Сайт\tHTML-код\tРазмещение\tДата\n';
+  D.sites.forEach(site=>{
+    site.links.forEach(l=>{
+      const pl=l.placement==='sitewide'?'Сквозное':'Главная';
+      csv+=`${site.url}\t${(l.html||l.pv||'').replace(/\t/g,' ').replace(/\n/g,' ')}\t${pl}\t${fmt(l.at)}\n`;
+      total++;
+    });
+  });
+  if(!total)return notify('Нет ссылок','error');
+  dl(csv,'all_links_'+new Date().toISOString().slice(0,10)+'.tsv');
+  notify('Экспорт всех ссылок ('+total+')');
+}
+
+// ===== WP CODE =====
 function mkPlugin(sec){
 return `<?php
 /*
@@ -238,28 +270,32 @@ add_action('rest_api_init',function(){
     header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
   });
-  register_rest_route('lp-api/v2','/verify',['methods'=>['POST','OPTIONS'],'callback'=>function($r)use($s){
-    if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
-    $p=$r->get_json_params();return['verified'=>$p['token']??'','method'=>'functions','cms'=>'wordpress'];
-  },'permission_callback'=>'__return_true']);
-  register_rest_route('lp-api/v2','/place',['methods'=>['POST','OPTIONS'],'callback'=>function($r)use($s){
-    if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
-    $p=$r->get_json_params();$html=$p['html']??'';$pl=sanitize_text_field($p['placement']??'homepage');
-    if(!$html)return new WP_Error('bad','',['status'=>400]);
-    $ok=wp_kses_allowed_html('post');$ok['a']['target']=1;$ok['a']['rel']=1;
-    $c=wp_kses($html,$ok);$ls=get_option('lp_links',[]);$id='lp_'.uniqid();
-    $ls[$id]=['html'=>$c,'pl'=>$pl,'t'=>current_time('mysql')];update_option('lp_links',$ls);
-    return['status'=>'placed','id'=>$id];
-  },'permission_callback'=>'__return_true']);
-  register_rest_route('lp-api/v2','/links',['methods'=>['GET','OPTIONS'],'callback'=>function($r)use($s){
-    if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
-    return get_option('lp_links',[]);
-  },'permission_callback'=>'__return_true']);
-  register_rest_route('lp-api/v2','/remove',['methods'=>['POST','OPTIONS'],'callback'=>function($r)use($s){
-    if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
-    $ls=get_option('lp_links',[]);unset($ls[$r->get_json_params()['id']??'']);
-    update_option('lp_links',$ls);return['status'=>'removed'];
-  },'permission_callback'=>'__return_true']);
+  register_rest_route('lp-api/v2','/verify',['methods'=>['POST','OPTIONS'],
+    'callback'=>function($r)use($s){
+      if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
+      $p=$r->get_json_params();return['verified'=>$p['token']??'','method'=>'functions','cms'=>'wordpress'];
+    },'permission_callback'=>'__return_true']);
+  register_rest_route('lp-api/v2','/place',['methods'=>['POST','OPTIONS'],
+    'callback'=>function($r)use($s){
+      if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
+      $p=$r->get_json_params();$html=$p['html']??'';$pl=sanitize_text_field($p['placement']??'homepage');
+      if(!$html)return new WP_Error('bad','',['status'=>400]);
+      $ok=wp_kses_allowed_html('post');$ok['a']['target']=1;$ok['a']['rel']=1;
+      $c=wp_kses($html,$ok);$ls=get_option('lp_links',[]);$id='lp_'.uniqid();
+      $ls[$id]=['html'=>$c,'pl'=>$pl,'t'=>current_time('mysql')];update_option('lp_links',$ls);
+      return['status'=>'placed','id'=>$id];
+    },'permission_callback'=>'__return_true']);
+  register_rest_route('lp-api/v2','/links',['methods'=>['GET','OPTIONS'],
+    'callback'=>function($r)use($s){
+      if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
+      return get_option('lp_links',[]);
+    },'permission_callback'=>'__return_true']);
+  register_rest_route('lp-api/v2','/remove',['methods'=>['POST','OPTIONS'],
+    'callback'=>function($r)use($s){
+      if($r->get_header('X-LP-Secret')!==$s)return new WP_Error('no','',['status'=>403]);
+      $ls=get_option('lp_links',[]);unset($ls[$r->get_json_params()['id']??'']);
+      update_option('lp_links',$ls);return['status'=>'removed'];
+    },'permission_callback'=>'__return_true']);
 });
 add_action('wp_footer',function(){
   $ls=get_option('lp_links',[]);if(empty($ls))return;$h=is_front_page()||is_home();
@@ -278,7 +314,7 @@ function rLogin(){
   return`<div class="lw"><div class="lb">
     <div style="text-align:center;font-size:36px">🔗</div>
     <h1 style="color:#f1f5f9;font-size:22px;text-align:center">Link Placer</h1>
-    <p style="color:#94a3b8;font-size:13px;text-align:center;margin-top:4px">v3 — с верификацией</p>
+    <p style="color:#94a3b8;font-size:13px;text-align:center;margin-top:4px">v3</p>
     <div style="margin-top:24px">
       <div class="ig"><input class="inp" id="li" placeholder="Логин"></div>
       <div class="ig"><input class="inp" id="lp" type="password" placeholder="Пароль"></div>
@@ -305,10 +341,14 @@ function rTab(){
   if(D.tab==='add')return rAdd();if(D.tab==='logs')return rLogs();if(D.tab==='users')return rUsers();return rSites()}
 
 function rSites(){
+  const totalLinks=D.sites.reduce((a,s)=>a+s.links.length,0);
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
     <h1 style="font-size:22px;font-weight:700">Мои сайты</h1>
-    <div style="display:flex;gap:8px;align-items:center"><span style="font-size:13px;color:#64748b">${D.sites.length}</span>
-    <button class="btn bp bsm" data-tab="add">+ Добавить</button></div></div>`;
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:13px;color:#64748b">${D.sites.length} сайтов · ${totalLinks} ссылок</span>
+      ${totalLinks?`<button class="btn bg bsm" id="exp-all">📥 Все ссылки</button>`:''}
+      <button class="btn bp bsm" data-tab="add">+ Добавить</button>
+    </div></div>`;
   if(!D.sites.length)return h+`<div style="text-align:center;padding:60px;color:#475569"><div style="font-size:48px;margin-bottom:12px">🌐</div><div style="font-size:16px;margin-bottom:16px">Нет сайтов</div><button class="btn bp" data-tab="add">Добавить</button></div>`;
   D.sites.forEach(s=>{
     h+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
@@ -326,14 +366,18 @@ function rSites(){
         <button class="btn bg bsm" data-do="conn" data-id="${s.id}">🔌 Связь</button>
         <button class="btn bg bsm" data-do="chk" data-id="${s.id}" ${D.ckid===s.id?'disabled':''}>${D.ckid===s.id?'⏳':'🔍'} Проверить</button>
         <button class="btn bsm ${s.connected?'bp':'boff'}" data-do="place" data-id="${s.id}">🔗 Разместить</button>
+        ${s.links.length?`<button class="btn bg bsm" data-do="export" data-id="${s.id}">📥</button>`:''}
         ${D.cu?.role==='admin'?`<button class="btn bd bsm" data-do="del" data-id="${s.id}">🗑</button>`:''}
       </div></div>
     ${s.links.length?`<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(100,116,139,.1)">
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Ссылки:</div>
-      ${s.links.map(l=>`<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px">
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Размещённые ссылки:</div>
+      ${s.links.map((l,li)=>`<div class="link-item">
         <span>${l.placement==='sitewide'?'🌐':'🏠'}</span>
-        <span style="color:#cbd5e1">${esc((l.pv||l.html||'').substring(0,80))}</span>
-        <span style="color:#475569;font-size:11px">${fmt(l.at)}</span></div>`).join('')}</div>`:''}</div>`});
+        <span style="color:#cbd5e1;flex:1">${esc((l.pv||l.html||'').substring(0,80))}</span>
+        <span style="color:#475569;font-size:11px;white-space:nowrap">${fmt(l.at)}</span>
+        <button class="link-del" data-do="rmlink" data-sid="${s.id}" data-lid="${l.id||''}" data-lidx="${li}" title="Удалить ссылку">✕</button>
+      </div>`).join('')}</div>`:''}</div>`;
+  });
   return h}
 
 function rAdd(){
@@ -363,7 +407,7 @@ function rUsers(){
     <input class="inp" id="ui" placeholder="ID" style="flex:1;min-width:80px;padding:8px 10px;font-size:13px">
     <input class="inp" id="un" placeholder="Имя" style="flex:1;min-width:80px;padding:8px 10px;font-size:13px">
     <input class="inp" id="up" placeholder="Пароль" style="flex:1;min-width:80px;padding:8px 10px;font-size:13px">
-    <select class="inp" id="ur" style="width:auto;padding:8px;font-size:13px"><option value="user">User</option><option value="admin">Admin</option></select>
+    <select class="inp" id="uur" style="width:auto;padding:8px;font-size:13px"><option value="user">User</option><option value="admin">Admin</option></select>
     <button class="btn bp bsm" id="ubtn">+</button></div></div>`;
   return h}
 
@@ -374,7 +418,7 @@ function rModal(){
   if(D.modal.t==='conn'){
     const v=D.modal.v;let inner='';
     if(!v){
-      inner=`<p style="color:#94a3b8;font-size:13px;margin-bottom:20px">Выберите способ подключения. Можно несколько.</p>
+      inner=`<p style="color:#94a3b8;font-size:13px;margin-bottom:20px">Выберите способ подключения.</p>
         <div style="display:flex;flex-direction:column;gap:10px">
         <button class="co" data-cv="plugin"><span style="font-size:28px">🔌</span><div><div style="color:#f1f5f9;font-weight:600">Плагин WP</div><div style="color:#94a3b8;font-size:12px;margin-top:4px">Скачать и загрузить</div></div></button>
         <button class="co" data-cv="file"><span style="font-size:28px">📄</span><div><div style="color:#f1f5f9;font-weight:600">Файл в корень</div><div style="color:#94a3b8;font-size:12px;margin-top:4px">lp-connector.php</div></div></button>
@@ -382,7 +426,7 @@ function rModal(){
     }else if(v==='plugin'){
       inner=`<button class="btn bg bsm" data-cv="back">← Назад</button>
         <h3 style="color:#f1f5f9;margin:12px 0 8px">Плагин WordPress</h3>
-        <ol class="st"><li>Удалите старый плагин Link Placer если есть</li><li>Скачайте новый</li><li><code>Плагины → Добавить → Загрузить</code> → Активировать</li><li>Проверьте связь</li></ol>
+        <ol class="st"><li>Удалите старый плагин Link Placer</li><li>Скачайте новый</li><li><code>Плагины → Добавить → Загрузить</code></li><li>Проверьте связь</li></ol>
         <button class="btn bp" style="margin-top:14px" id="dlp">📥 Скачать плагин v3</button>`
     }else if(v==='file'){
       inner=`<button class="btn bg bsm" data-cv="back">← Назад</button>
@@ -392,13 +436,13 @@ function rModal(){
     }else if(v==='func'){
       inner=`<button class="btn bg bsm" data-cv="back">← Назад</button>
         <h3 style="color:#f1f5f9;margin:12px 0 8px">functions.php</h3>
-        <ol class="st"><li>Скопируйте код</li><li>Вставьте в конец functions.php</li><li>Проверьте связь</li></ol>
+        <ol class="st"><li>Скопируйте код</li><li>Вставьте в конец functions.php <strong>перед</strong> ?&gt; или после последней строки</li><li>Проверьте связь</li></ol>
         <div class="cb"><pre>${esc(mkFunc(site.secret))}</pre><button class="cp" id="cpf">Копировать</button></div>`}
     return`<div class="mo" id="ov"><div class="ml mm">
       <div class="mh"><h2>Связь — ${esc(site.name)}</h2><button class="mc" id="cx">✕</button></div>
       ${inner}
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(100,116,139,.2)">
-        <button class="btn bs" id="mchk" ${D.ckid?'disabled':''}>${D.ckid?'⏳ Проверяю...':'🔍 Проверить связь'}</button>
+        <button class="btn bs" id="mchk" ${D.ckid?'disabled':''}>${D.ckid?'⏳':'🔍'} Проверить связь</button>
       </div>
       <div class="sb-box"><strong>Secret:</strong> <code>${site.secret}</code></div>
     </div></div>`}
@@ -420,10 +464,11 @@ function rModal(){
     </div></div>`}
   return''}
 
-// ===== BINDINGS =====
+// ===== BIND =====
 function bind(){
   document.querySelectorAll('[data-tab]').forEach(e=>e.onclick=()=>{D.tab=e.dataset.tab;render()});
   const o=document.getElementById('out');if(o)o.onclick=()=>{D.li=false;D.cu=null;render()};
+
   const ab=document.getElementById('abtn');
   if(ab)ab.onclick=()=>{
     const n=document.getElementById('an').value.trim();let u=document.getElementById('au').value.trim();
@@ -433,17 +478,25 @@ function bind(){
     D.sites.push({id:Date.now().toString(),url:u,name:n,cms:document.getElementById('ac').value,secret:gensec(),connected:false,connectionMethod:null,links:[],addedAt:new Date().toISOString(),lastCheck:null});
     log('Добавлен',u);D.tab='sites';notify('Добавлен');render()};
 
+  // Export all
+  const ea=document.getElementById('exp-all');if(ea)ea.onclick=()=>exportAllLinks();
+
   document.querySelectorAll('[data-do]').forEach(e=>e.onclick=()=>{
     const id=e.dataset.id,idx=parseInt(e.dataset.idx),act=e.dataset.do;
     if(act==='conn'){D.modal={t:'conn',sid:id,v:null};render()}
     if(act==='chk')doCheck(id);
     if(act==='place'){D.modal={t:'place',sid:id};render()}
     if(act==='del'){D.sites=D.sites.filter(s=>s.id!==id);sv();notify('Удалён');render()}
-    if(act==='delu'){D.users.splice(idx,1);sv();notify('Удалён');render()}});
+    if(act==='delu'){D.users.splice(idx,1);sv();notify('Удалён');render()}
+    if(act==='export')exportSiteLinks(id);
+    if(act==='rmlink'){
+      const sid=e.dataset.sid,lid=e.dataset.lid,lidx=parseInt(e.dataset.lidx);
+      if(confirm('Удалить ссылку с сайта?'))doRemoveLink(sid,lid,lidx);
+    }
+  });
 
   const cx=document.getElementById('cx');if(cx)cx.onclick=()=>{D.modal=null;render()};
   const ov=document.getElementById('ov');if(ov)ov.onclick=e=>{if(e.target===ov){D.modal=null;render()}};
-
   document.querySelectorAll('[data-cv]').forEach(e=>e.onclick=()=>{if(D.modal)D.modal.v=e.dataset.cv==='back'?null:e.dataset.cv;render()});
 
   const dlp=document.getElementById('dlp');if(dlp&&D.modal){const s=gs(D.modal.sid);if(s)dlp.onclick=()=>dl(mkPlugin(s.secret),'link-placer-v3.php')}
@@ -451,13 +504,12 @@ function bind(){
   const cpf=document.getElementById('cpf');if(cpf&&D.modal){const s=gs(D.modal.sid);if(s)cpf.onclick=()=>cp(mkFunc(s.secret))}
   const mchk=document.getElementById('mchk');if(mchk&&D.modal)mchk.onclick=()=>doCheck(D.modal.sid);
   const gc=document.getElementById('gc');if(gc&&D.modal)gc.onclick=()=>{D.modal={t:'conn',sid:D.modal.sid,v:null};render()};
-
   document.querySelectorAll('[data-pl]').forEach(e=>e.onclick=()=>{document.querySelectorAll('.pb').forEach(b=>b.classList.remove('on'));e.classList.add('on')});
   const dpl=document.getElementById('dpl');if(dpl&&D.modal)dpl.onclick=()=>doPlace(D.modal.sid);
 
   const ubtn=document.getElementById('ubtn');
   if(ubtn)ubtn.onclick=()=>{
-    const i=document.getElementById('ui').value.trim(),n=document.getElementById('un').value.trim(),p=document.getElementById('up').value,r=document.getElementById('ur').value;
+    const i=document.getElementById('ui').value.trim(),n=document.getElementById('un').value.trim(),p=document.getElementById('up').value,r=document.getElementById('uur').value;
     if(!i||!n||!p)return notify('Заполните','error');
     if(D.users.some(u=>u.id===i))return notify('ID занят','error');
     D.users.push({id:i,name:n,pass:p,role:r});sv();notify('Добавлен');render()}}
