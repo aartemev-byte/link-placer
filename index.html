@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Link Placer — Панель управления</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+input,select,button,textarea{font-family:inherit}
+a{color:#60a5fa;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Layout */
+.app{display:flex;min-height:100vh}
+.sidebar{width:230px;background:rgba(15,23,42,.95);border-right:1px solid rgba(100,116,139,.15);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100}
+.main{flex:1;margin-left:230px;padding:28px 32px;min-height:100vh;overflow-x:hidden}
+
+/* Sidebar */
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(100,116,139,.1);margin-bottom:8px}
+.sidebar-logo h1{font-size:20px;font-weight:700;color:#f1f5f9}
+.sidebar-logo small{font-size:11px;color:#64748b}
+.nav-btn{display:flex;align-items:center;gap:10px;padding:11px 20px;border:none;background:transparent;color:#94a3b8;cursor:pointer;font-size:14px;width:100%;text-align:left;border-left:3px solid transparent;transition:all .15s}
+.nav-btn:hover{background:rgba(59,130,246,.08);color:#cbd5e1}
+.nav-btn.active{background:rgba(59,130,246,.15);color:#60a5fa;font-weight:600;border-left-color:#3b82f6}
+.sidebar-footer{margin-top:auto;padding:16px 20px;border-top:1px solid rgba(100,116,139,.1)}
+.sidebar-footer .user-info{font-size:12px;color:#64748b;margin-bottom:8px}
+
+/* Buttons */
+.btn{padding:8px 16px;border-radius:8px;border:none;font-weight:600;cursor:pointer;font-size:13px;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff}
+.btn-primary:hover{opacity:.9}
+.btn-success{background:#22c55e;color:#fff}
+.btn-ghost{background:transparent;border:1px solid rgba(100,116,139,.3);color:#94a3b8}
+.btn-ghost:hover{border-color:#60a5fa;color:#60a5fa}
+.btn-danger{background:transparent;border:1px solid rgba(239,68,68,.3);color:#ef4444}
+.btn-danger:hover{background:rgba(239,68,68,.1)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-lg{padding:12px 24px;font-size:15px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-disabled-look{background:#334155!important;color:#64748b!important;cursor:not-allowed}
+
+/* Inputs */
+.input{width:100%;padding:11px 14px;border-radius:8px;border:1px solid rgba(100,116,139,.3);background:rgba(15,23,42,.7);color:#f1f5f9;font-size:14px;outline:none;transition:border-color .15s}
+.input:focus{border-color:#3b82f6}
+.input-label{display:block;color:#94a3b8;font-size:12px;margin-bottom:5px;font-weight:500}
+.input-group{margin-bottom:14px}
+
+/* Cards */
+.card{background:rgba(30,41,59,.7);border-radius:12px;padding:18px 20px;border:1px solid rgba(100,116,139,.15);transition:border-color .2s}
+.card:hover{border-color:rgba(100,116,139,.3)}
+.card+.card{margin-top:10px}
+
+/* Status dot */
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;flex-shrink:0}
+.dot-green{background:#22c55e;box-shadow:0 0 6px #22c55e88}
+.dot-red{background:#ef4444;box-shadow:0 0 6px #ef444488}
+.dot-yellow{background:#eab308;box-shadow:0 0 6px #eab30888}
+
+/* Tags */
+.tag{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500;display:inline-block}
+.tag-cms{background:rgba(99,102,241,.2);color:#a5b4fc}
+.tag-method{background:rgba(34,197,94,.15);color:#86efac}
+.tag-admin{background:rgba(239,68,68,.15);color:#fca5a5}
+.tag-user{background:rgba(59,130,246,.15);color:#93c5fd}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:#1e293b;border-radius:16px;padding:28px;width:100%;border:1px solid rgba(100,116,139,.25);overflow-y:auto}
+.modal-sm{max-width:440px;max-height:85vh}
+.modal-md{max-width:620px;max-height:85vh}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-header h2{color:#f1f5f9;font-size:18px}
+.modal-close{background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer}
+
+/* Notification */
+.notify{position:fixed;top:20px;right:20px;z-index:2000;padding:12px 20px;border-radius:10px;color:#f1f5f9;font-size:14px;font-weight:500;box-shadow:0 8px 30px rgba(0,0,0,.4);transition:all .3s;opacity:0;transform:translateY(-10px);pointer-events:none}
+.notify.show{opacity:1;transform:translateY(0)}
+.notify-info{background:#1e3a5f;border:1px solid #1e40af}
+.notify-success{background:#14532d;border:1px solid #166534}
+.notify-error{background:#7f1d1d;border:1px solid #991b1b}
+
+/* Connect options */
+.connect-option{display:flex;align-items:flex-start;gap:14px;padding:16px;border-radius:12px;border:1px solid rgba(100,116,139,.25);background:rgba(15,23,42,.6);cursor:pointer;transition:all .15s;width:100%;text-align:left}
+.connect-option:hover{border-color:#3b82f6}
+.connect-option .icon{font-size:28px;flex-shrink:0}
+.connect-option .title{color:#f1f5f9;font-weight:600;font-size:15px}
+.connect-option .desc{color:#94a3b8;font-size:12px;margin-top:4px}
+
+/* Placement btns */
+.placement-btn{flex:1;padding:10px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;border:1px solid rgba(100,116,139,.3);background:rgba(15,23,42,.5);color:#94a3b8;transition:all .15s}
+.placement-btn.active{border:2px solid #3b82f6;background:rgba(59,130,246,.15);color:#60a5fa}
+
+/* Code block */
+.code-block{position:relative;margin-top:12px}
+.code-block pre{background:#0f172a;color:#e2e8f0;padding:16px;border-radius:8px;font-size:11px;overflow:auto;max-height:200px;border:1px solid rgba(100,116,139,.2);font-family:'Cascadia Code','Fira Code',monospace,monospace;line-height:1.5;white-space:pre-wrap;word-break:break-all}
+.code-block .copy-btn{position:absolute;top:8px;right:8px;padding:4px 10px;border-radius:6px;border:none;background:#334155;color:#e2e8f0;font-size:11px;cursor:pointer}
+.code-block .copy-btn:hover{background:#475569}
+
+/* Login */
+.login-wrap{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);display:flex;align-items:center;justify-content:center}
+.login-box{background:rgba(30,41,59,.95);border-radius:16px;padding:40px 36px;width:380px;box-shadow:0 25px 60px rgba(0,0,0,.5);border:1px solid rgba(100,116,139,.2)}
+.login-box h1{color:#f1f5f9;font-size:22px;text-align:center}
+.login-box .subtitle{color:#94a3b8;font-size:13px;text-align:center;margin-top:4px}
+.login-box .logo{text-align:center;font-size:36px;margin-bottom:4px}
+.login-error{color:#ef4444;font-size:13px;margin-top:4px}
+.login-hint{color:#64748b;font-size:11px;text-align:center;margin-top:12px}
+
+/* Logs */
+.log-row{display:flex;gap:12px;padding:8px 12px;border-radius:8px;font-size:13px;align-items:flex-start}
+.log-row:nth-child(odd){background:rgba(30,41,59,.5)}
+.log-time{color:#475569;min-width:140px;flex-shrink:0}
+.log-user{color:#94a3b8;min-width:60px}
+.log-action{color:#e2e8f0;font-weight:500;min-width:140px}
+.log-detail{color:#64748b;word-break:break-all}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 20px;color:#475569}
+.empty .icon{font-size:48px;margin-bottom:12px}
+.empty .text{font-size:16px;margin-bottom:16px}
+
+/* Site card details */
+.site-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px}
+.site-info{flex:1;min-width:200px}
+.site-name{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.site-name span.name{font-size:16px;font-weight:700;color:#f1f5f9}
+.site-url{font-size:13px;color:#64748b}
+.site-stats{font-size:12px;color:#475569;margin-top:4px}
+.site-stats strong{color:#94a3b8}
+.site-actions{display:flex;gap:6px;flex-wrap:wrap}
+.site-links{margin-top:14px;padding-top:12px;border-top:1px solid rgba(100,116,139,.1)}
+.site-links .label{font-size:12px;color:#64748b;margin-bottom:6px}
+.link-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+.link-row .placement-icon{flex-shrink:0}
+.link-row .arrow{color:#475569}
+
+/* Responsive */
+@media(max-width:768px){
+  .sidebar{width:60px;overflow:hidden}
+  .sidebar-logo h1,.sidebar-logo small,.nav-btn span.label,.sidebar-footer .user-info{display:none}
+  .nav-btn{justify-content:center;padding:14px 0}
+  .main{margin-left:60px;padding:16px}
+  .site-header{flex-direction:column}
+}
+
+/* Steps */
+ol.steps{color:#cbd5e1;font-size:13px;line-height:1.9;padding-left:20px}
+ol.steps code{color:#60a5fa;background:rgba(96,165,250,.1);padding:1px 5px;border-radius:3px}
+
+/* Secret box */
+.secret-box{margin-top:16px;padding:10px 14px;background:rgba(15,23,42,.5);border-radius:8px;font-size:11px;color:#64748b}
+.secret-box code{color:#94a3b8;word-break:break-all}
+
+/* Section header */
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.section-header h1{font-size:22px;font-weight:700}
+.section-header .meta{display:flex;gap:8px;align-items:center}
+.section-header .count{font-size:13px;color:#64748b}
+
+/* Users */
+.user-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:10px;background:rgba(30,41,59,.7);border:1px solid rgba(100,116,139,.15)}
+.user-row+.user-row{margin-top:8px}
+.add-user-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.add-user-form .input{flex:1;min-width:80px;padding:8px 10px;font-size:13px}
+.add-user-form select{padding:8px;border-radius:6px;border:1px solid rgba(100,116,139,.3);background:rgba(15,23,42,.7);color:#f1f5f9;font-size:13px}
+</style>
+</head>
+<body>
+
+<!-- Notification -->
+<div id="notify" class="notify notify-info"></div>
+
+<!-- App container -->
+<div id="app"></div>
+
+<script>
+// ============ STATE ============
+let state = {
+  loggedIn: false,
+  currentUser: null,
+  sites: [],
+  logs: [],
+  users: [{id:'admin',name:'Admin',role:'admin',pass:'admin'}],
+  tab: 'sites',
+  // modals
+  connectModal: null,
+  connectView: null,
+  placeModal: null,
+  // forms
+  loginForm: {id:'',pass:''},
+  addForm: {url:'',name:'',cms:'WordPress'},
+  placeForm: {url:'',anchor:'',placement:'homepage'},
+  addUserForm: {id:'',name:'',pass:'',role:'user'},
+  checkingConnection: null,
+};
+
+function loadState(){
+  try{
+    const s=localStorage.getItem('lp_state');
+    if(s){
+      const parsed=JSON.parse(s);
+      state.sites=parsed.sites||[];
+      state.logs=parsed.logs||[];
+      state.users=parsed.users||state.users;
+    }
+  }catch(e){}
+}
+
+function saveState(){
+  try{
+    localStorage.setItem('lp_state',JSON.stringify({sites:state.sites,logs:state.logs,users:state.users}));
+  }catch(e){}
+}
+
+// ============ UTILS ============
+function genSecret(){
+  const c='abcdefghijklmnopqrstuvwxyz0123456789';
+  let r='';for(let i=0;i<32;i++)r+=c[Math.floor(Math.random()*c.length)];return r;
+}
+
+function notify(msg,type='info'){
+  const el=document.getElementById('notify');
+  el.className='notify notify-'+type+' show';
+  el.textContent=msg;
+  setTimeout(()=>{el.classList.remove('show')},3500);
+}
+
+function fmtDate(iso){
+  if(!iso)return'—';
+  try{return new Date(iso).toLocaleString('ru')}catch{return iso}
+}
+
+function addLog(action,detail){
+  state.logs.push({time:new Date().toISOString(),action,detail,user:state.currentUser?.id||'—'});
+  saveState();
+}
+
+function downloadFile(content,filename){
+  const blob=new Blob([content],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function copyText(text){
+  navigator.clipboard.writeText(text).then(()=>notify('Скопировано!')).catch(()=>notify('Не удалось скопировать','error'));
+}
+
+// ============ WP CODE GENERATORS ============
+function getPluginCode(secret){
+return `<?php
+/**
+ * Plugin Name: Link Placer Connector
+ * Description: API connector for Link Placer service
+ * Version: 1.0.0
+ */
+if (!defined('ABSPATH')) exit;
+
+add_action('rest_api_init', function() {
+    // CORS headers
+    add_action('rest_pre_serve_request', function() {
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
+    });
+
+    register_rest_route('link-placer/v1', '/ping', [
+        'methods' => ['GET','OPTIONS'],
+        'callback' => function() {
+            return ['status' => 'ok', 'cms' => 'wordpress', 'method' => 'plugin', 'v' => '1.0'];
+        },
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('link-placer/v1', '/place', [
+        'methods' => ['POST','OPTIONS'],
+        'callback' => function($req) {
+            $secret = $req->get_header('X-LP-Secret');
+            if ($secret !== '${secret}') return new WP_Error('forbidden', 'Invalid secret', ['status' => 403]);
+            $p = $req->get_json_params();
+            $url = sanitize_url($p['url'] ?? '');
+            $anchor = sanitize_text_field($p['anchor'] ?? '');
+            $placement = sanitize_text_field($p['placement'] ?? 'homepage');
+            if (!$url || !$anchor) return new WP_Error('bad_request', 'url and anchor required', ['status' => 400]);
+            $links = get_option('lp_placed_links', []);
+            $id = 'lp_' . uniqid();
+            $links[$id] = ['url' => $url, 'anchor' => $anchor, 'placement' => $placement, 'created' => current_time('mysql')];
+            update_option('lp_placed_links', $links);
+            return ['status' => 'placed', 'id' => $id];
+        },
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('link-placer/v1', '/links', [
+        'methods' => ['GET','OPTIONS'],
+        'callback' => function($req) {
+            $secret = $req->get_header('X-LP-Secret');
+            if ($secret !== '${secret}') return new WP_Error('forbidden', 'Invalid secret', ['status' => 403]);
+            return get_option('lp_placed_links', []);
+        },
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('link-placer/v1', '/remove', [
+        'methods' => ['POST','OPTIONS'],
+        'callback' => function($req) {
+            $secret = $req->get_header('X-LP-Secret');
+            if ($secret !== '${secret}') return new WP_Error('forbidden', 'Invalid secret', ['status' => 403]);
+            $id = sanitize_text_field($req->get_json_params()['id'] ?? '');
+            $links = get_option('lp_placed_links', []);
+            unset($links[$id]);
+            update_option('lp_placed_links', $links);
+            return ['status' => 'removed'];
+        },
+        'permission_callback' => '__return_true'
+    ]);
+});
+
+// Render links on frontend
+add_action('wp_footer', function() {
+    $links = get_option('lp_placed_links', []);
+    if (empty($links)) return;
+    $is_home = is_front_page() || is_home();
+    echo '<div style="padding:4px 10px;font-size:12px;background:#f9f9f9;border-top:1px solid #eee;display:flex;gap:12px;flex-wrap:wrap;">';
+    foreach ($links as $link) {
+        if ($link['placement'] === 'homepage' && !$is_home) continue;
+        echo '<a href="' . esc_url($link['url']) . '">' . esc_html($link['anchor']) . '</a>';
+    }
+    echo '</div>';
+});`;
+}
+
+function getFileCode(secret){
+return `<?php
+// Link Placer Connector — standalone file
+// Place as lp-connector.php in WordPress root directory
+
+require_once(__DIR__ . '/wp-load.php');
+
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
+
+$action = $_GET['action'] ?? '';
+$secret = $_SERVER['HTTP_X_LP_SECRET'] ?? '';
+$valid_secret = '${secret}';
+
+if ($action === 'ping') {
+    echo json_encode(['status' => 'ok', 'cms' => 'wordpress', 'method' => 'file']);
+    exit;
+}
+
+if ($secret !== $valid_secret) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Invalid secret']);
+    exit;
+}
+
+$input = json_decode(file_get_contents('php://input'), true);
+
+if ($action === 'place') {
+    $url = esc_url_raw($input['url'] ?? '');
+    $anchor = sanitize_text_field($input['anchor'] ?? '');
+    $placement = sanitize_text_field($input['placement'] ?? 'homepage');
+    if (!$url || !$anchor) { http_response_code(400); echo json_encode(['error' => 'url and anchor required']); exit; }
+    $links = get_option('lp_placed_links', []);
+    $id = 'lp_' . uniqid();
+    $links[$id] = ['url'=>$url,'anchor'=>$anchor,'placement'=>$placement,'created'=>current_time('mysql')];
+    update_option('lp_placed_links', $links);
+    echo json_encode(['status' => 'placed', 'id' => $id]);
+} elseif ($action === 'links') {
+    echo json_encode(get_option('lp_placed_links', []));
+} elseif ($action === 'remove') {
+    $id = sanitize_text_field($input['id'] ?? '');
+    $links = get_option('lp_placed_links', []);
+    unset($links[$id]);
+    update_option('lp_placed_links', $links);
+    echo json_encode(['status' => 'removed']);
+}`;
+}
+
+function getFunctionsCode(secret){
+return `// === Link Placer Connector — вставить в functions.php ===
+
+add_action('rest_api_init', function() {
+    $lp_secret = '${secret}';
+
+    add_action('rest_pre_serve_request', function() {
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
+    });
+
+    register_rest_route('link-placer/v1', '/ping', [
+        'methods' => ['GET','OPTIONS'],
+        'callback' => function() { return ['status'=>'ok','cms'=>'wordpress','method'=>'functions']; },
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('link-placer/v1', '/place', [
+        'methods' => ['POST','OPTIONS'],
+        'callback' => function($req) use ($lp_secret) {
+            if ($req->get_header('X-LP-Secret') !== $lp_secret) return new WP_Error('forbidden','',['status'=>403]);
+            $p = $req->get_json_params();
+            $url = sanitize_url($p['url'] ?? '');
+            $anchor = sanitize_text_field($p['anchor'] ?? '');
+            $placement = sanitize_text_field($p['placement'] ?? 'homepage');
+            if (!$url || !$anchor) return new WP_Error('bad','url+anchor required',['status'=>400]);
+            $links = get_option('lp_placed_links', []);
+            $id = 'lp_' . uniqid();
+            $links[$id] = compact('url','anchor','placement') + ['created'=>current_time('mysql')];
+            update_option('lp_placed_links', $links);
+            return ['status'=>'placed','id'=>$id];
+        },
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('link-placer/v1', '/links', [
+        'methods' => ['GET','OPTIONS'],
+        'callback' => function($req) use ($lp_secret) {
+            if ($req->get_header('X-LP-Secret') !== $lp_secret) return new WP_Error('forbidden','',['status'=>403]);
+            return get_option('lp_placed_links', []);
+        },
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('link-placer/v1', '/remove', [
+        'methods' => ['POST','OPTIONS'],
+        'callback' => function($req) use ($lp_secret) {
+            if ($req->get_header('X-LP-Secret') !== $lp_secret) return new WP_Error('forbidden','',['status'=>403]);
+            $links = get_option('lp_placed_links', []);
+            unset($links[$req->get_json_params()['id'] ?? '']);
+            update_option('lp_placed_links', $links);
+            return ['status'=>'removed'];
+        },
+        'permission_callback' => '__return_true'
+    ]);
+});
+
+add_action('wp_footer', function() {
+    $links = get_option('lp_placed_links', []);
+    if (empty($links)) return;
+    $home = is_front_page() || is_home();
+    echo '<div style="padding:4px 10px;font-size:12px;background:#f9f9f9;border-top:1px solid #eee;display:flex;gap:12px;flex-wrap:wrap;">';
+    foreach ($links as $l) {
+        if ($l['placement']==='homepage' && !$home) continue;
+        echo '<a href="'.esc_url($l['url']).'">'.esc_html($l['anchor']).'</a> ';
+    }
+    echo '</div>';
+});`;
+}
+
+// ============ RENDER ENGINE ============
+function render(){
+  const app=document.getElementById('app');
+  if(!state.loggedIn){
+    app.innerHTML=renderLogin();
+    bindLogin();
+    return;
+  }
+  app.innerHTML=`
+    <div class="app">
+      ${renderSidebar()}
+      <div class="main">${renderContent()}</div>
+    </div>
+    ${state.connectModal?renderConnectModal():''}
+    ${state.placeModal?renderPlaceModal():''}
+  `;
+  bindAll();
+}
+
+// ============ LOGIN ============
+function renderLogin(){
+  return `<div class="login-wrap"><div class="login-box">
+    <div class="logo">🔗</div>
+    <h1>Link Placer</h1>
+    <p class="subtitle">Панель управления размещением</p>
+    <div style="margin-top:24px">
+      <div class="input-group"><input class="input" id="login-id" placeholder="Логин" value="${state.loginForm.id}"></div>
+      <div class="input-group"><input class="input" id="login-pass" type="password" placeholder="Пароль" value="${state.loginForm.pass}"></div>
+      <button class="btn btn-primary btn-lg" style="width:100%" id="login-btn">Войти</button>
+      <div class="login-hint">По умолчанию: admin / admin</div>
+    </div>
+  </div></div>`;
+}
+function bindLogin(){
+  const idEl=document.getElementById('login-id'),passEl=document.getElementById('login-pass'),btn=document.getElementById('login-btn');
+  if(!btn)return;
+  const doLogin=()=>{
+    const id=idEl.value.trim(),pass=passEl.value;
+    const user=state.users.find(u=>u.id===id&&u.pass===pass);
+    if(user){state.currentUser=user;state.loggedIn=true;state.loginForm={id:'',pass:''};render();}
+    else notify('Неверный логин или пароль','error');
+  };
+  btn.onclick=doLogin;
+  passEl.onkeydown=e=>{if(e.key==='Enter')doLogin()};
+  idEl.onkeydown=e=>{if(e.key==='Enter')passEl.focus()};
+}
+
+// ============ SIDEBAR ============
+function renderSidebar(){
+  const isAdmin=state.currentUser?.role==='admin';
+  const tabs=[
+    {id:'sites',icon:'🌐',label:'Сайты'},
+    {id:'add',icon:'➕',label:'Добавить сайт'},
+    {id:'logs',icon:'📋',label:'Логи'},
+  ];
+  if(isAdmin)tabs.push({id:'users',icon:'👥',label:'Пользователи'});
+  return `<div class="sidebar">
+    <div class="sidebar-logo"><h1>🔗 Link Placer</h1><small>v1.0 — WordPress</small></div>
+    ${tabs.map(t=>`<button class="nav-btn ${state.tab===t.id?'active':''}" data-tab="${t.id}">
+      <span>${t.icon}</span><span class="label">${t.label}</span>
+    </button>`).join('')}
+    <div class="sidebar-footer">
+      <div class="user-info">👤 ${state.currentUser?.name} (${state.currentUser?.role})</div>
+      <button class="btn btn-ghost btn-sm" style="width:100%" id="logout-btn">Выйти</button>
+    </div>
+  </div>`;
+}
+
+// ============ CONTENT ============
+function renderContent(){
+  switch(state.tab){
+    case 'sites': return renderSites();
+    case 'add': return renderAddSite();
+    case 'logs': return renderLogs();
+    case 'users': return renderUsers();
+    default: return renderSites();
+  }
+}
+
+// ---- SITES ----
+function renderSites(){
+  const sites=state.sites;
+  const isAdmin=state.currentUser?.role==='admin';
+  let html=`<div class="section-header">
+    <h1>Мои сайты</h1>
+    <div class="meta">
+      <span class="count">${sites.length} сайтов</span>
+      <button class="btn btn-primary btn-sm" data-tab="add">+ Добавить</button>
+    </div>
+  </div>`;
+  if(!sites.length){
+    html+=`<div class="empty"><div class="icon">🌐</div><div class="text">Нет добавленных сайтов</div>
+      <button class="btn btn-primary" data-tab="add">Добавить первый сайт</button></div>`;
+    return html;
+  }
+  sites.forEach((s,i)=>{
+    const dotClass=s.connected?'dot-green':'dot-red';
+    html+=`<div class="card">
+      <div class="site-header">
+        <div class="site-info">
+          <div class="site-name">
+            <span class="dot ${dotClass}"></span>
+            <span class="name">${esc(s.name)}</span>
+            <span class="tag tag-cms">${esc(s.cms)}</span>
+            ${s.connectionMethod?`<span class="tag tag-method">${esc(s.connectionMethod)}</span>`:''}
+          </div>
+          <div class="site-url">${esc(s.url)}</div>
+          <div class="site-stats">Ссылок: <strong>${s.links.length}</strong>${s.lastCheck?` · Проверка: ${fmtDate(s.lastCheck)}`:''}</div>
+        </div>
+        <div class="site-actions">
+          <button class="btn btn-ghost btn-sm" data-action="connect" data-idx="${i}">🔌 Связь</button>
+          <button class="btn btn-ghost btn-sm" data-action="check" data-idx="${i}" ${state.checkingConnection===s.id?'disabled':''}>${state.checkingConnection===s.id?'⏳':'🔍'} Проверить</button>
+          <button class="btn btn-sm ${s.connected?'btn-primary':'btn-disabled-look'}" data-action="place" data-idx="${i}">🔗 Разместить</button>
+          ${isAdmin?`<button class="btn btn-danger btn-sm" data-action="remove" data-idx="${i}">🗑</button>`:''}
+        </div>
+      </div>
+      ${s.links.length?`<div class="site-links"><div class="label">Размещённые ссылки:</div>
+        ${s.links.map(l=>`<div class="link-row">
+          <span class="placement-icon">${l.placement==='sitewide'?'🌐':'🏠'}</span>
+          <a href="${esc(l.url)}" target="_blank">${esc(l.anchor)}</a>
+          <span class="arrow">→ ${esc(l.url)}</span>
+        </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  });
+  return html;
+}
+
+// ---- ADD SITE ----
+function renderAddSite(){
+  return `<div style="max-width:500px">
+    <h1 style="margin-bottom:24px">Добавить сайт</h1>
+    <div class="input-group"><label class="input-label">Название сайта</label><input class="input" id="add-name" value="${esc(state.addForm.name)}" placeholder="Мой блог"></div>
+    <div class="input-group"><label class="input-label">URL сайта</label><input class="input" id="add-url" value="${esc(state.addForm.url)}" placeholder="https://example.com"></div>
+    <div class="input-group"><label class="input-label">CMS</label>
+      <select class="input" id="add-cms">
+        <option value="WordPress" ${state.addForm.cms==='WordPress'?'selected':''}>WordPress</option>
+        <option value="Drupal" disabled>Drupal (скоро)</option>
+        <option value="Joomla" disabled>Joomla (скоро)</option>
+        <option value="Bitrix" disabled>Bitrix (скоро)</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:8px" id="add-site-btn">Добавить сайт</button>
+  </div>`;
+}
+
+// ---- LOGS ----
+function renderLogs(){
+  let html=`<h1 style="margin-bottom:24px">Логи действий</h1>`;
+  if(!state.logs.length) return html+`<div class="empty">Логов пока нет</div>`;
+  const logs=[...state.logs].reverse();
+  html+=logs.map(l=>`<div class="log-row">
+    <span class="log-time">${fmtDate(l.time)}</span>
+    <span class="log-user">${esc(l.user||'—')}</span>
+    <span class="log-action">${esc(l.action)}</span>
+    <span class="log-detail">${esc(l.detail||'')}</span>
+  </div>`).join('');
+  return html;
+}
+
+// ---- USERS ----
+function renderUsers(){
+  const isAdmin=state.currentUser?.role==='admin';
+  if(!isAdmin)return'<p>Доступ запрещён</p>';
+  let html=`<h1 style="margin-bottom:24px">Пользователи</h1>`;
+  state.users.forEach((u,i)=>{
+    html+=`<div class="user-row">
+      <div><span style="font-weight:600;color:#f1f5f9">${esc(u.name)}</span> <span class="tag ${u.role==='admin'?'tag-admin':'tag-user'}">${u.role}</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:#64748b;font-size:12px">ID: ${esc(u.id)}</span>
+        ${u.id!=='admin'?`<button class="btn btn-danger btn-sm" data-action="removeuser" data-idx="${i}">🗑</button>`:''}
+      </div>
+    </div>`;
+  });
+  html+=`<div class="card" style="margin-top:20px">
+    <h3 style="font-size:15px;color:#f1f5f9;margin-bottom:12px">Добавить пользователя</h3>
+    <div class="add-user-form">
+      <input class="input" id="au-id" placeholder="ID" value="${esc(state.addUserForm.id)}">
+      <input class="input" id="au-name" placeholder="Имя" value="${esc(state.addUserForm.name)}">
+      <input class="input" id="au-pass" placeholder="Пароль" value="${esc(state.addUserForm.pass)}">
+      <select id="au-role" class="input" style="flex:0 0 auto;width:auto">
+        <option value="user" ${state.addUserForm.role==='user'?'selected':''}>User</option>
+        <option value="admin" ${state.addUserForm.role==='admin'?'selected':''}>Admin</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="add-user-btn">Добавить</button>
+    </div>
+  </div>`;
+  return html;
+}
+
+// ============ MODALS ============
+function renderConnectModal(){
+  const s=state.connectModal;
+  if(!s)return'';
+  const v=state.connectView;
+  let inner='';
+  if(!v){
+    inner=`
+      <p style="color:#94a3b8;font-size:13px;margin-bottom:20px">Выберите способ подключения. Все три создают одинаковый API. Можно использовать несколько — любой работающий обеспечит связь.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="connect-option" data-cv="plugin"><span class="icon">🔌</span><div><div class="title">WordPress Плагин</div><div class="desc">Скачайте .php и загрузите через Плагины → Добавить → Загрузить в админке WP</div></div></button>
+        <button class="connect-option" data-cv="file"><span class="icon">📄</span><div><div class="title">Файл в корень сайта</div><div class="desc">Скачайте lp-connector.php и загрузите в корень сайта по FTP</div></div></button>
+        <button class="connect-option" data-cv="functions"><span class="icon">⚙️</span><div><div class="title">Код в functions.php</div><div class="desc">Скопируйте код и вставьте в конец functions.php вашей темы</div></div></button>
+      </div>`;
+  } else if(v==='plugin'){
+    inner=`
+      <button class="btn btn-ghost btn-sm" data-cv="back" style="margin-bottom:16px">← Назад</button>
+      <h3 style="color:#f1f5f9;font-size:15px;margin-bottom:8px">WordPress Плагин</h3>
+      <ol class="steps">
+        <li>Нажмите «Скачать плагин»</li>
+        <li>В админке WP: <code>Плагины → Добавить → Загрузить плагин</code></li>
+        <li>Загрузите скачанный файл и активируйте</li>
+        <li>Вернитесь сюда и нажмите «Проверить связь»</li>
+      </ol>
+      <button class="btn btn-primary" style="margin-top:14px" id="dl-plugin">📥 Скачать плагин</button>`;
+  } else if(v==='file'){
+    inner=`
+      <button class="btn btn-ghost btn-sm" data-cv="back" style="margin-bottom:16px">← Назад</button>
+      <h3 style="color:#f1f5f9;font-size:15px;margin-bottom:8px">Файл в корень сайта</h3>
+      <ol class="steps">
+        <li>Нажмите «Скачать файл»</li>
+        <li>Загрузите <code>lp-connector.php</code> в корневую папку сайта (где wp-config.php)</li>
+        <li>Проверьте доступ: <code>${esc(s.url)}/lp-connector.php?action=ping</code></li>
+        <li>Нажмите «Проверить связь»</li>
+      </ol>
+      <button class="btn btn-primary" style="margin-top:14px" id="dl-file">📥 Скачать файл</button>`;
+  } else if(v==='functions'){
+    const code=getFunctionsCode(s.secret);
+    inner=`
+      <button class="btn btn-ghost btn-sm" data-cv="back" style="margin-bottom:16px">← Назад</button>
+      <h3 style="color:#f1f5f9;font-size:15px;margin-bottom:8px">Код в functions.php</h3>
+      <ol class="steps">
+        <li>Скопируйте код ниже</li>
+        <li>В админке WP: <code>Внешний вид → Редактор тем → functions.php</code></li>
+        <li>Вставьте код в конец файла и сохраните</li>
+        <li>Нажмите «Проверить связь»</li>
+      </ol>
+      <div class="code-block"><pre id="fn-code">${esc(code)}</pre><button class="copy-btn" id="copy-fn">Копировать</button></div>`;
+  }
+  return `<div class="modal-overlay" id="modal-overlay">
+    <div class="modal modal-md">
+      <div class="modal-header"><h2>Установить связь — ${esc(s.name)}</h2><button class="modal-close" id="close-modal">✕</button></div>
+      ${inner}
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(100,116,139,.2)">
+        <button class="btn btn-success" id="check-conn-btn" ${state.checkingConnection===s.id?'disabled':''}>
+          ${state.checkingConnection===s.id?'⏳ Проверяю...':'🔍 Проверить связь'}
+        </button>
+      </div>
+      <div class="secret-box"><strong>API Secret:</strong> <code>${s.secret}</code> — встроен в код, не делитесь им.</div>
+    </div>
+  </div>`;
+}
+
+function renderPlaceModal(){
+  const s=state.placeModal;
+  if(!s)return'';
+  if(!s.connected){
+    return `<div class="modal-overlay" id="modal-overlay"><div class="modal modal-sm">
+      <h3 style="color:#ef4444;margin-bottom:12px">⚠️ Связь не установлена</h3>
+      <p style="color:#94a3b8;font-size:14px">Сначала установите связь с сайтом <strong style="color:#f1f5f9">${esc(s.name)}</strong> через один из доступных способов.</p>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary btn-sm" id="go-connect">Установить связь</button>
+        <button class="btn btn-ghost btn-sm" id="close-modal">Закрыть</button>
+      </div>
+    </div></div>`;
+  }
+  const f=state.placeForm;
+  return `<div class="modal-overlay" id="modal-overlay"><div class="modal modal-sm">
+    <div class="modal-header"><h2>Разместить ссылку — ${esc(s.name)}</h2><button class="modal-close" id="close-modal">✕</button></div>
+    <div class="input-group"><label class="input-label">URL ссылки</label><input class="input" id="pl-url" value="${esc(f.url)}" placeholder="https://example.com"></div>
+    <div class="input-group"><label class="input-label">Анкор (текст ссылки)</label><input class="input" id="pl-anchor" value="${esc(f.anchor)}" placeholder="Пример анкора"></div>
+    <div class="input-group"><label class="input-label">Размещение</label>
+      <div style="display:flex;gap:8px">
+        <button class="placement-btn ${f.placement==='homepage'?'active':''}" data-pl="homepage">🏠 Главная</button>
+        <button class="placement-btn ${f.placement==='sitewide'?'active':''}" data-pl="sitewide">🌐 Сквозное</button>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:8px" id="do-place">Разместить ссылку</button>
+  </div></div>`;
+}
+
+// ============ BINDINGS ============
+function bindAll(){
+  // Nav
+  document.querySelectorAll('[data-tab]').forEach(el=>{
+    el.onclick=()=>{state.tab=el.dataset.tab;render()};
+  });
+  // Logout
+  const lb=document.getElementById('logout-btn');
+  if(lb)lb.onclick=()=>{state.loggedIn=false;state.currentUser=null;render()};
+  // Add site
+  const asb=document.getElementById('add-site-btn');
+  if(asb)asb.onclick=()=>{
+    const name=document.getElementById('add-name').value.trim();
+    let url=document.getElementById('add-url').value.trim();
+    const cms=document.getElementById('add-cms').value;
+    if(!name||!url)return notify('Заполните все поля','error');
+    if(!url.startsWith('http'))url='https://'+url;
+    url=url.replace(/\/+$/,'');
+    if(state.sites.some(s=>s.url===url))return notify('Сайт уже добавлен','error');
+    state.sites.push({id:Date.now().toString(),url,name,cms,secret:genSecret(),connected:false,connectionMethod:null,links:[],addedAt:new Date().toISOString(),lastCheck:null});
+    addLog('Добавлен сайт',url);
+    state.addForm={url:'',name:'',cms:'WordPress'};
+    state.tab='sites';
+    notify('Сайт добавлен');
+    render();
+  };
+  // Site actions
+  document.querySelectorAll('[data-action]').forEach(el=>{
+    el.onclick=()=>{
+      const idx=parseInt(el.dataset.idx);
+      const action=el.dataset.action;
+      const site=state.sites[idx];
+      if(!site&&action!=='removeuser')return;
+      if(action==='connect'){state.connectModal=site;state.connectView=null;render();}
+      if(action==='check')doCheck(site);
+      if(action==='place'){state.placeModal=site;state.placeForm={url:'',anchor:'',placement:'homepage'};render();}
+      if(action==='remove'){state.sites.splice(idx,1);addLog('Сайт удалён',site.url);notify('Сайт удалён');render();}
+      if(action==='removeuser'){state.users.splice(idx,1);saveState();notify('Пользователь удалён');render();}
+    };
+  });
+  // Modal close
+  const cm=document.getElementById('close-modal');
+  if(cm)cm.onclick=()=>{state.connectModal=null;state.connectView=null;state.placeModal=null;render()};
+  const mo=document.getElementById('modal-overlay');
+  if(mo)mo.onclick=e=>{if(e.target===mo){state.connectModal=null;state.connectView=null;state.placeModal=null;render()}};
+  // Connect view
+  document.querySelectorAll('[data-cv]').forEach(el=>{
+    el.onclick=()=>{state.connectView=el.dataset.cv==='back'?null:el.dataset.cv;render()};
+  });
+  // Downloads
+  const dp=document.getElementById('dl-plugin');
+  if(dp)dp.onclick=()=>downloadFile(getPluginCode(state.connectModal.secret),'link-placer-connector.php');
+  const df=document.getElementById('dl-file');
+  if(df)df.onclick=()=>downloadFile(getFileCode(state.connectModal.secret),'lp-connector.php');
+  const cfn=document.getElementById('copy-fn');
+  if(cfn)cfn.onclick=()=>copyText(getFunctionsCode(state.connectModal.secret));
+  // Check connection from modal
+  const ccb=document.getElementById('check-conn-btn');
+  if(ccb&&state.connectModal)ccb.onclick=()=>doCheck(state.connectModal);
+  // Go connect from place modal
+  const gc=document.getElementById('go-connect');
+  if(gc)gc.onclick=()=>{const s=state.placeModal;state.placeModal=null;state.connectModal=s;state.connectView=null;render()};
+  // Placement btns
+  document.querySelectorAll('[data-pl]').forEach(el=>{
+    el.onclick=()=>{state.placeForm.placement=el.dataset.pl;render()};
+  });
+  // Do place
+  const dpl=document.getElementById('do-place');
+  if(dpl)dpl.onclick=()=>doPlace();
+  // Add user
+  const aub=document.getElementById('add-user-btn');
+  if(aub)aub.onclick=()=>{
+    const id=document.getElementById('au-id').value.trim();
+    const name=document.getElementById('au-name').value.trim();
+    const pass=document.getElementById('au-pass').value;
+    const role=document.getElementById('au-role').value;
+    if(!id||!name||!pass)return notify('Заполните все поля','error');
+    if(state.users.some(u=>u.id===id))return notify('ID занят','error');
+    state.users.push({id,name,pass,role});
+    state.addUserForm={id:'',name:'',pass:'',role:'user'};
+    saveState();
+    notify('Пользователь добавлен');
+    render();
+  };
+}
+
+// ============ ACTIONS ============
+async function doCheck(site){
+  state.checkingConnection=site.id;
+  render();
+  let connected=false,method=null;
+  // Try REST API
+  try{
+    const r=await fetch(site.url+'/wp-json/link-placer/v1/ping',{signal:AbortSignal.timeout(8000)});
+    if(r.ok){const j=await r.json();if(j.status==='ok'){connected=true;method=j.method||'plugin/functions';}}
+  }catch(e){}
+  // Try file
+  if(!connected){
+    try{
+      const r=await fetch(site.url+'/lp-connector.php?action=ping',{signal:AbortSignal.timeout(8000)});
+      if(r.ok){const j=await r.json();if(j.status==='ok'){connected=true;method='file';}}
+    }catch(e){}
+  }
+  const s=state.sites.find(x=>x.id===site.id);
+  if(s){s.connected=connected;s.connectionMethod=method;s.lastCheck=new Date().toISOString();}
+  if(state.connectModal&&state.connectModal.id===site.id){
+    state.connectModal.connected=connected;state.connectModal.connectionMethod=method;
+  }
+  addLog(connected?'Связь установлена':'Связь не установлена',site.url+(method?' ('+method+')':''));
+  state.checkingConnection=null;
+  notify(connected?'Связь установлена ('+method+')':'Связь не установлена — убедитесь что коннектор установлен',connected?'success':'error');
+  render();
+}
+
+async function doPlace(){
+  const site=state.placeModal;
+  if(!site||!site.connected)return;
+  const url=document.getElementById('pl-url')?.value.trim();
+  const anchor=document.getElementById('pl-anchor')?.value.trim();
+  const placement=state.placeForm.placement;
+  if(!url||!anchor)return notify('Заполните URL и анкор','error');
+  const isFile=site.connectionMethod==='file';
+  const endpoint=isFile?site.url+'/lp-connector.php?action=place':site.url+'/wp-json/link-placer/v1/place';
+  try{
+    const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({url,anchor,placement})});
+    const j=await r.json();
+    if(j.status==='placed'){
+      const s=state.sites.find(x=>x.id===site.id);
+      if(s)s.links.push({url,anchor,placement,id:j.id,placedAt:new Date().toISOString()});
+      addLog('Ссылка размещена',anchor+' → '+url+' на '+site.url);
+      state.placeModal=null;
+      state.placeForm={url:'',anchor:'',placement:'homepage'};
+      notify('Ссылка размещена!','success');
+    }else{
+      notify('Ошибка: '+(j.error||JSON.stringify(j)),'error');
+    }
+  }catch(e){
+    notify('Ошибка подключения: '+e.message,'error');
+  }
+  render();
+}
+
+function esc(s){
+  if(!s)return'';
+  const d=document.createElement('div');d.textContent=String(s);return d.innerHTML;
+}
+
+// ============ INIT ============
+loadState();
+render();
+</script>
+</body>
+</html>
