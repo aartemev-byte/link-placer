@@ -254,12 +254,11 @@ return `<?php
 /**
  * Plugin Name: Link Placer Connector
  * Description: API connector for Link Placer service
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 if (!defined('ABSPATH')) exit;
 
 add_action('rest_api_init', function() {
-    // CORS headers
     add_action('rest_pre_serve_request', function() {
         header('Access-Control-Allow-Origin: *');
         header('Access-Control-Allow-Headers: Content-Type, X-LP-Secret');
@@ -268,7 +267,7 @@ add_action('rest_api_init', function() {
     register_rest_route('link-placer/v1', '/ping', [
         'methods' => ['GET','OPTIONS'],
         'callback' => function() {
-            return ['status' => 'ok', 'cms' => 'wordpress', 'method' => 'plugin', 'v' => '1.0'];
+            return ['status' => 'ok', 'cms' => 'wordpress', 'method' => 'plugin', 'v' => '1.1'];
         },
         'permission_callback' => '__return_true'
     ]);
@@ -279,13 +278,16 @@ add_action('rest_api_init', function() {
             $secret = $req->get_header('X-LP-Secret');
             if ($secret !== '${secret}') return new WP_Error('forbidden', 'Invalid secret', ['status' => 403]);
             $p = $req->get_json_params();
-            $url = sanitize_url($p['url'] ?? '');
-            $anchor = sanitize_text_field($p['anchor'] ?? '');
+            $html = $p['html'] ?? '';
             $placement = sanitize_text_field($p['placement'] ?? 'homepage');
-            if (!$url || !$anchor) return new WP_Error('bad_request', 'url and anchor required', ['status' => 400]);
+            if (!$html) return new WP_Error('bad_request', 'html required', ['status' => 400]);
+            $allowed = wp_kses_allowed_html('post');
+            $allowed['a']['target'] = true;
+            $allowed['a']['rel'] = true;
+            $clean_html = wp_kses($html, $allowed);
             $links = get_option('lp_placed_links', []);
             $id = 'lp_' . uniqid();
-            $links[$id] = ['url' => $url, 'anchor' => $anchor, 'placement' => $placement, 'created' => current_time('mysql')];
+            $links[$id] = ['html' => $clean_html, 'placement' => $placement, 'created' => current_time('mysql')];
             update_option('lp_placed_links', $links);
             return ['status' => 'placed', 'id' => $id];
         },
@@ -317,17 +319,14 @@ add_action('rest_api_init', function() {
     ]);
 });
 
-// Render links on frontend
 add_action('wp_footer', function() {
     $links = get_option('lp_placed_links', []);
     if (empty($links)) return;
     $is_home = is_front_page() || is_home();
-    echo '<div style="padding:4px 10px;font-size:12px;background:#f9f9f9;border-top:1px solid #eee;display:flex;gap:12px;flex-wrap:wrap;">';
     foreach ($links as $link) {
-        if ($link['placement'] === 'homepage' && !$is_home) continue;
-        echo '<a href="' . esc_url($link['url']) . '">' . esc_html($link['anchor']) . '</a>';
+        if (($link['placement'] ?? 'homepage') === 'homepage' && !$is_home) continue;
+        echo $link['html'] ?? '';
     }
-    echo '</div>';
 });`;
 }
 
@@ -363,13 +362,16 @@ if ($secret !== $valid_secret) {
 $input = json_decode(file_get_contents('php://input'), true);
 
 if ($action === 'place') {
-    $url = esc_url_raw($input['url'] ?? '');
-    $anchor = sanitize_text_field($input['anchor'] ?? '');
+    $html = $input['html'] ?? '';
     $placement = sanitize_text_field($input['placement'] ?? 'homepage');
-    if (!$url || !$anchor) { http_response_code(400); echo json_encode(['error' => 'url and anchor required']); exit; }
+    if (!$html) { http_response_code(400); echo json_encode(['error' => 'html required']); exit; }
+    $allowed = wp_kses_allowed_html('post');
+    $allowed['a']['target'] = true;
+    $allowed['a']['rel'] = true;
+    $clean_html = wp_kses($html, $allowed);
     $links = get_option('lp_placed_links', []);
     $id = 'lp_' . uniqid();
-    $links[$id] = ['url'=>$url,'anchor'=>$anchor,'placement'=>$placement,'created'=>current_time('mysql')];
+    $links[$id] = ['html' => $clean_html, 'placement' => $placement, 'created' => current_time('mysql')];
     update_option('lp_placed_links', $links);
     echo json_encode(['status' => 'placed', 'id' => $id]);
 } elseif ($action === 'links') {
@@ -405,13 +407,16 @@ add_action('rest_api_init', function() {
         'callback' => function($req) use ($lp_secret) {
             if ($req->get_header('X-LP-Secret') !== $lp_secret) return new WP_Error('forbidden','',['status'=>403]);
             $p = $req->get_json_params();
-            $url = sanitize_url($p['url'] ?? '');
-            $anchor = sanitize_text_field($p['anchor'] ?? '');
+            $html = $p['html'] ?? '';
             $placement = sanitize_text_field($p['placement'] ?? 'homepage');
-            if (!$url || !$anchor) return new WP_Error('bad','url+anchor required',['status'=>400]);
+            if (!$html) return new WP_Error('bad','html required',['status'=>400]);
+            $allowed = wp_kses_allowed_html('post');
+            $allowed['a']['target'] = true;
+            $allowed['a']['rel'] = true;
+            $clean = wp_kses($html, $allowed);
             $links = get_option('lp_placed_links', []);
             $id = 'lp_' . uniqid();
-            $links[$id] = compact('url','anchor','placement') + ['created'=>current_time('mysql')];
+            $links[$id] = ['html'=>$clean,'placement'=>$placement,'created'=>current_time('mysql')];
             update_option('lp_placed_links', $links);
             return ['status'=>'placed','id'=>$id];
         },
@@ -444,12 +449,10 @@ add_action('wp_footer', function() {
     $links = get_option('lp_placed_links', []);
     if (empty($links)) return;
     $home = is_front_page() || is_home();
-    echo '<div style="padding:4px 10px;font-size:12px;background:#f9f9f9;border-top:1px solid #eee;display:flex;gap:12px;flex-wrap:wrap;">';
     foreach ($links as $l) {
-        if ($l['placement']==='homepage' && !$home) continue;
-        echo '<a href="'.esc_url($l['url']).'">'.esc_html($l['anchor']).'</a> ';
+        if (($l['placement'] ?? 'homepage') === 'homepage' && !$home) continue;
+        echo $l['html'] ?? '';
     }
-    echo '</div>';
 });`;
 }
 
@@ -572,8 +575,8 @@ function renderSites(){
       ${s.links.length?`<div class="site-links"><div class="label">Размещённые ссылки:</div>
         ${s.links.map(l=>`<div class="link-row">
           <span class="placement-icon">${l.placement==='sitewide'?'🌐':'🏠'}</span>
-          <a href="${esc(l.url)}" target="_blank">${esc(l.anchor)}</a>
-          <span class="arrow">→ ${esc(l.url)}</span>
+          <span style="color:#cbd5e1">${esc(l.preview||l.anchor||l.html||'').substring(0,80)}</span>
+          <span style="color:#475569;font-size:11px;margin-left:4px">${fmtDate(l.placedAt)}</span>
         </div>`).join('')}
       </div>`:''}
     </div>`;
