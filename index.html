@@ -189,7 +189,7 @@ let state = {
   // forms
   loginForm: {id:'',pass:''},
   addForm: {url:'',name:'',cms:'WordPress'},
-  placeForm: {url:'',anchor:'',placement:'homepage'},
+  placeForm: {html:'',placement:'homepage'},
   addUserForm: {id:'',name:'',pass:'',role:'user'},
   checkingConnection: null,
 };
@@ -720,10 +720,13 @@ function renderPlaceModal(){
     </div></div>`;
   }
   const f=state.placeForm;
-  return `<div class="modal-overlay" id="modal-overlay"><div class="modal modal-sm">
+  return `<div class="modal-overlay" id="modal-overlay"><div class="modal modal-md">
     <div class="modal-header"><h2>Разместить ссылку — ${esc(s.name)}</h2><button class="modal-close" id="close-modal">✕</button></div>
-    <div class="input-group"><label class="input-label">URL ссылки</label><input class="input" id="pl-url" value="${esc(f.url)}" placeholder="https://example.com"></div>
-    <div class="input-group"><label class="input-label">Анкор (текст ссылки)</label><input class="input" id="pl-anchor" value="${esc(f.anchor)}" placeholder="Пример анкора"></div>
+    <div class="input-group">
+      <label class="input-label">HTML-код ссылки</label>
+      <textarea class="input" id="pl-html" rows="5" placeholder='<a href="https://example.com">Текст ссылки</a>'style="font-family:'Cascadia Code','Fira Code',monospace;font-size:13px;resize:vertical;min-height:80px">${esc(f.html||'')}</textarea>
+      <div style="color:#64748b;font-size:11px;margin-top:4px">Вставьте любой HTML-код: ссылку, блок текста со ссылками, баннер и т.д.</div>
+    </div>
     <div class="input-group"><label class="input-label">Размещение</label>
       <div style="display:flex;gap:8px">
         <button class="placement-btn ${f.placement==='homepage'?'active':''}" data-pl="homepage">🏠 Главная</button>
@@ -769,7 +772,7 @@ function bindAll(){
       if(!site&&action!=='removeuser')return;
       if(action==='connect'){state.connectModal=site;state.connectView=null;render();}
       if(action==='check')doCheck(site);
-      if(action==='place'){state.placeModal=site;state.placeForm={url:'',anchor:'',placement:'homepage'};render();}
+      if(action==='place'){state.placeModal=site;state.placeForm={html:'',placement:'homepage'};render();}
       if(action==='remove'){state.sites.splice(idx,1);addLog('Сайт удалён',site.url);notify('Сайт удалён');render();}
       if(action==='removeuser'){state.users.splice(idx,1);saveState();notify('Пользователь удалён');render();}
     };
@@ -851,21 +854,23 @@ async function doCheck(site){
 async function doPlace(){
   const site=state.placeModal;
   if(!site||!site.connected)return;
-  const url=document.getElementById('pl-url')?.value.trim();
-  const anchor=document.getElementById('pl-anchor')?.value.trim();
+  const html=document.getElementById('pl-html')?.value.trim();
   const placement=state.placeForm.placement;
-  if(!url||!anchor)return notify('Заполните URL и анкор','error');
+  if(!html)return notify('Вставьте HTML-код','error');
   const isFile=site.connectionMethod==='file';
   const endpoint=isFile?site.url+'/lp-connector.php?action=place':site.url+'/wp-json/link-placer/v1/place';
   try{
-    const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({url,anchor,placement})});
+    const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({html,placement})});
     const j=await r.json();
     if(j.status==='placed'){
       const s=state.sites.find(x=>x.id===site.id);
-      if(s)s.links.push({url,anchor,placement,id:j.id,placedAt:new Date().toISOString()});
-      addLog('Ссылка размещена',anchor+' → '+url+' на '+site.url);
+      // Extract preview text from html
+      const tmp=document.createElement('div');tmp.innerHTML=html;
+      const preview=tmp.textContent.substring(0,60)||(html.substring(0,60));
+      if(s)s.links.push({html,placement,id:j.id,preview,placedAt:new Date().toISOString()});
+      addLog('Ссылка размещена',preview+' на '+site.url);
       state.placeModal=null;
-      state.placeForm={url:'',anchor:'',placement:'homepage'};
+      state.placeForm={html:'',placement:'homepage'};
       notify('Ссылка размещена!','success');
     }else{
       notify('Ошибка: '+(j.error||JSON.stringify(j)),'error');
