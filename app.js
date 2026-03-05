@@ -25,7 +25,7 @@ function drupalOpenEdit(site){
   window.open(baseUrl(site)+'/user/login?destination='+encodeURIComponent(dest),'drupal_edit');
   log('Drupal →',editUrl);notify('🔗 Страница логина открыта','success');
   // After a delay, redirect the same tab to the edit page (in case destination didn't work)
-  setTimeout(function(){window.open(fullEdit,'drupal_edit')},3000);
+  setTimeout(function(){window.open(fullEdit,'drupal_edit')},5000);
 }
 
 // ========== CHECK ==========
@@ -136,15 +136,23 @@ function getConnectOptions(cms){
     {key:'evo-inject',icon:'💉',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}
   ];
   if(cms==='Drupal')return[
-    {key:'drupal-login',icon:'🔗',bg:'linear-gradient(135deg,#2196F3,#1565C0)',title:'Логин + редактирование',desc:'Логин/пароль + URL страницы редактирования'}
+    {key:'drupal-login',icon:'🔗',bg:'linear-gradient(135deg,#2196F3,#1565C0)',title:'Логин + редактирование',desc:'Логин/пароль + URL страницы редактирования'},
+    {key:'drupal-inject',icon:'💉',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}
   ];
-  return[{key:'wp-plugin',icon:'🔌',bg:'linear-gradient(135deg,var(--accent),#8b5cf6)',title:'Плагин WP',desc:'Скачать и установить'},{key:'wp-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'lp-connector.php'},{key:'wp-func',icon:'⚙️',bg:'linear-gradient(135deg,var(--orange),#ea580c)',title:'functions.php',desc:'Код в тему'}]}
+  return[{key:'wp-plugin',icon:'🔌',bg:'linear-gradient(135deg,var(--accent),#8b5cf6)',title:'Плагин WP',desc:'Скачать и установить'},{key:'wp-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'lp-connector.php'},{key:'wp-func',icon:'⚙️',bg:'linear-gradient(135deg,var(--orange),#ea580c)',title:'functions.php',desc:'Код в тему'},{key:'wp-inject',icon:'💉',bg:'linear-gradient(135deg,var(--pink),#db2777)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}]}
 
 function getConnectContent(key,site){var sec=site.secret;
   var map={
     'wp-plugin':{title:'Плагин WordPress',steps:['Удалите старый плагин','Скачайте новый','Плагины → Добавить → Загрузить','Активируйте'],dlBtn:{id:'dl1',label:'📥 Скачать',fn:function(){dlFile(mkWpPlugin(sec),'linkforge-v3.php')}}},
     'wp-file':{title:'Файл в корень WP',steps:['Скачайте файл','Загрузите в корень','Проверьте связь'],dlBtn:{id:'dl1',label:'📥 Скачать',fn:function(){dlFile(mkWpFile(sec),'lp-connector.php')}}},
     'wp-func':{title:'functions.php',steps:['Скопируйте код','Вставьте перед ?> или в конец','Проверьте связь'],code:mkWpFunc(sec)},
+    'wp-inject':{title:'Вставить код в любой PHP-файл WordPress',steps:[
+      'Скопируйте код ниже',
+      'Откройте любой <code>.php</code> файл сайта (например <code>index.php</code>)',
+      'Вставьте код <strong>сразу после</strong> открывающего <code>&lt;?php</code>',
+      'Сохраните файл',
+      'Укажите путь к файлу ниже и нажмите «Проверить связь»'
+    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе сайта. Данные хранятся в lp_links_data.json рядом с файлом.'},
 
     // --- MODX Revolution All-in-One ---
     'modx-allinone':{title:'Плагин «всё-в-одном» (MODX Revo)',steps:[
@@ -191,7 +199,16 @@ function getConnectContent(key,site){var sec=site.secret;
       'Нажмите «Сохранить»',
       'При размещении ссылки нажмите «Открыть редактор» — панель залогинится и откроет страницу',
       'Вставьте ссылку вручную через редактор Drupal'
-    ],hasDrupalAuth:true,hasDrupalEditUrl:true,note:'Панель автоматически залогинится и откроет страницу редактирования в новой вкладке. Вставку ссылки вы делаете вручную через редактор Drupal.'}
+    ],hasDrupalAuth:true,hasDrupalEditUrl:true,note:'Панель автоматически залогинится и откроет страницу редактирования в новой вкладке. Вставку ссылки вы делаете вручную через редактор Drupal.'},
+
+    // --- Drupal inject code ---
+    'drupal-inject':{title:'Вставить код в PHP-файл Drupal',steps:[
+      'Скопируйте код ниже',
+      'Откройте любой <code>.php</code> файл сайта (например <code>index.php</code>)',
+      'Вставьте код <strong>сразу после</strong> открывающего <code>&lt;?php</code>',
+      'Сохраните файл',
+      'Укажите путь к файлу ниже и нажмите «Проверить связь»'
+    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе Drupal. Ссылки размещаются автоматически через панель. Данные хранятся в lp_links_data.json рядом с файлом.'}
   };
   return map[key]||{title:'?',steps:[]}}
 
