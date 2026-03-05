@@ -17,9 +17,12 @@ function baseUrl(s){return s.url.replace(/\/+$/,'')}
 function drupalOpenEdit(site){
   var editUrl=site.drupalEditUrl||'';
   if(!editUrl)return notify('Укажите URL страницы','error');
-  if(editUrl.indexOf('http')!==0)editUrl=baseUrl(site)+(editUrl[0]==='/'?'':'/')+editUrl;
-  window.open(editUrl,'_blank');
-  log('Drupal →',editUrl);notify('🔗 Страница открыта','success');
+  var dest=editUrl;
+  if(dest.indexOf('http')===0)dest=dest.replace(baseUrl(site),'');
+  if(dest[0]!=='/')dest='/'+dest;
+  // Open login page with destination — after login Drupal redirects to edit page
+  window.open(baseUrl(site)+'/user/login?destination='+encodeURIComponent(dest),'_blank');
+  log('Drupal →',editUrl);notify('🔗 Страница логина открыта','success');
 }
 
 // ========== CHECK ==========
