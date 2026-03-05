@@ -18,27 +18,8 @@ function drupalOpenEdit(site){
   var editUrl=site.drupalEditUrl||'';
   if(!editUrl)return notify('Укажите URL страницы','error');
   if(editUrl.indexOf('http')!==0)editUrl=baseUrl(site)+(editUrl[0]==='/'?'':'/')+editUrl;
-  var user=site.drupalUser||'';
-  var pass=site.drupalPass||'';
-  if(!user||!pass){window.open(editUrl,'_blank');log('Drupal →',editUrl);notify('🔗 Страница открыта','success');return}
-  // Create a self-submitting HTML page that logs into Drupal and redirects to edit page
-  var dest=editUrl.replace(baseUrl(site),'');
-  var loginUrl=baseUrl(site)+'/user/login';
-  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Вход...</title></head><body>'
-    +'<p style="font-family:sans-serif;text-align:center;margin-top:60px;color:#666">⏳ Выполняется вход...</p>'
-    +'<form id="lf" method="POST" action="'+loginUrl+'?destination='+encodeURIComponent(dest)+'">'
-    +'<input type="hidden" name="name" value="'+esc(user)+'">'
-    +'<input type="hidden" name="pass" value="'+esc(pass)+'">'
-    +'<input type="hidden" name="form_id" value="user_login_form">'
-    +'<input type="hidden" name="op" value="Se connecter">'
-    +'</form>'
-    +'<script>document.getElementById("lf").submit();<\/script>'
-    +'</body></html>';
-  var blob=new Blob([html],{type:'text/html'});
-  var blobUrl=URL.createObjectURL(blob);
-  window.open(blobUrl,'_blank');
-  setTimeout(function(){URL.revokeObjectURL(blobUrl)},5000);
-  log('Drupal →',editUrl);notify('🔗 Вход и переход...','success');
+  window.open(editUrl,'_blank');
+  log('Drupal →',editUrl);notify('🔗 Страница открыта','success');
 }
 
 // ========== CHECK ==========
@@ -257,7 +238,7 @@ function rModal(){if(!D.modal)return '';var site=gs(D.modal.sid);if(!site)return
   }
   if(D.modal.t==='place'){if(!site.connected)return '<div class="mo" id="ov"><div class="ml ms"><div style="text-align:center;padding:20px 0"><div style="font-size:48px;margin-bottom:12px">🔌</div><h3 style="color:var(--red);margin-bottom:8px">Нет связи</h3><p style="color:var(--text2);margin-bottom:20px">Сначала подключитесь</p><div style="display:flex;gap:8px;justify-content:center"><button class="btn bp bsm" id="gc">Подключить</button><button class="btn bg bsm" id="cx">Закрыть</button></div></div></div></div>';
     var isDrupal=site.connectionMethod==='drupal-login';
-    return '<div class="mo" id="ov"><div class="ml mm"><div class="mh"><h2>Разместить</h2><button class="mc" id="cx">✕</button></div><div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px"><span class="dot dg" style="margin:0"></span><span style="font-weight:600">'+esc(site.name)+'</span>'+cmsTag(site.cms)+'<span class="tag tm" style="margin-left:auto">'+esc(site.connectionMethod)+'</span></div><div class="ig"><label class="lbl">HTML-код'+(isDrupal?' для вставки':'')+'</label><textarea class="inp" id="ph" rows="5" placeholder=\'<a href="https://example.com">Текст</a>\' style="font-family:monospace;font-size:13px;resize:vertical;min-height:100px"></textarea>'+(isDrupal?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Скопируйте код и вставьте в редактор Drupal через режим «Source»</div>':'')+'</div>'+(isDrupal?'<div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn bp" style="flex:1" id="drupal-open">🔗 Открыть редактор</button><button class="btn bg" id="drupal-copy-html" style="white-space:nowrap">📋 Копировать</button></div>':'')+'<div class="ig"><label class="lbl">Размещение</label><div style="display:flex;gap:8px"><button class="pb on" data-pl="homepage">🏠 Главная</button><button class="pb" data-pl="sitewide">🌐 Все</button></div></div><button class="btn '+(isDrupal?'bs2':'bp blg')+'" style="width:100%;margin-top:8px" id="dpl">'+(isDrupal?'✅ Отметить как размещённое':'⚡ Разместить')+'</button></div></div>'}return ''}
+    return '<div class="mo" id="ov"><div class="ml mm"><div class="mh"><h2>Разместить</h2><button class="mc" id="cx">✕</button></div><div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px"><span class="dot dg" style="margin:0"></span><span style="font-weight:600">'+esc(site.name)+'</span>'+cmsTag(site.cms)+'<span class="tag tm" style="margin-left:auto">'+esc(site.connectionMethod)+'</span></div><div class="ig"><label class="lbl">HTML-код'+(isDrupal?' для вставки':'')+'</label><textarea class="inp" id="ph" rows="5" placeholder=\'<a href="https://example.com">Текст</a>\' style="font-family:monospace;font-size:13px;resize:vertical;min-height:100px"></textarea>'+(isDrupal?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Скопируйте код и вставьте в редактор Drupal через режим «Source»</div>':'')+'</div>'+(isDrupal?'<div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn bp" style="flex:1" id="drupal-open">🔗 Открыть редактор</button><button class="btn bg" id="drupal-copy-html" style="white-space:nowrap">📋 Копировать HTML</button><button class="btn bg" id="drupal-copy-creds" style="white-space:nowrap">🔑 Копировать логин/пароль</button></div>':'')+'<div class="ig"><label class="lbl">Размещение</label><div style="display:flex;gap:8px"><button class="pb on" data-pl="homepage">🏠 Главная</button><button class="pb" data-pl="sitewide">🌐 Все</button></div></div><button class="btn '+(isDrupal?'bs2':'bp blg')+'" style="width:100%;margin-top:8px" id="dpl">'+(isDrupal?'✅ Отметить как размещённое':'⚡ Разместить')+'</button></div></div>'}return ''}
 
 // ========== BIND ==========
 function bindAll(){document.querySelectorAll('[data-tab]').forEach(function(e){e.onclick=function(){D.tab=e.dataset.tab;render()}});var o=document.getElementById('out');if(o)o.onclick=function(){D.li=false;D.cu=null;render()};var ab=document.getElementById('abtn');if(ab)ab.onclick=function(){var n=document.getElementById('an').value.trim(),u=document.getElementById('au').value.trim();if(!n||!u)return notify('Заполните','error');if(u.indexOf('http')!==0)u='https://'+u;u=u.replace(/\/+$/,'');if(D.sites.some(function(s){return s.url===u}))return notify('Уже есть','error');D.sites.push({id:Date.now().toString(),url:u,name:n,cms:document.getElementById('ac').value,secret:gensec(),connected:false,connectionMethod:null,links:[],addedAt:new Date().toISOString(),lastCheck:null});log('Добавлен',u);D.tab='sites';notify('✅ Добавлен','success');render()};var ea=document.getElementById('exp-all');if(ea)ea.onclick=function(){exportAll()};document.querySelectorAll('[data-do]').forEach(function(e){e.onclick=function(){var id=e.dataset.id,idx=parseInt(e.dataset.idx),act=e.dataset.do;if(act==='conn'){D.modal={t:'conn',sid:id,v:null};render()}if(act==='chk')doCheck(id);if(act==='place'){D.modal={t:'place',sid:id};render()}if(act==='del'){if(confirm('Удалить?')){D.sites=D.sites.filter(function(s){return s.id!==id});sv();notify('Удалён');render()}}if(act==='delu'){D.users.splice(idx,1);sv();notify('Удалён');render()}if(act==='export')exportSite(id);if(act==='rmlink'){var sid=e.dataset.sid,lid=e.dataset.lid,lidx=parseInt(e.dataset.lidx);if(confirm('Удалить ссылку?'))doRemoveLink(sid,lid,lidx)}}});var cx=document.getElementById('cx');if(cx)cx.onclick=function(){D.modal=null;render()};var ov=document.getElementById('ov');if(ov)ov.onclick=function(e){if(e.target===ov){D.modal=null;render()}};document.querySelectorAll('[data-cv]').forEach(function(e){e.onclick=function(){if(D.modal)D.modal.v=e.dataset.cv==='back'?null:e.dataset.cv;render()}});if(D.modal&&D.modal.v){var site=gs(D.modal.sid);if(site){var cc=getConnectContent(D.modal.v,site);var dlb=document.getElementById('dl1');if(dlb&&cc.dlBtn)dlb.onclick=cc.dlBtn.fn;var cpb=document.getElementById('cpcode');if(cpb&&cc.code)cpb.onclick=function(){cpTxt(cc.code)}}}var mchk=document.getElementById('mchk');if(mchk&&D.modal)mchk.onclick=function(){
@@ -272,6 +253,7 @@ function bindAll(){document.querySelectorAll('[data-tab]').forEach(function(e){e
     var dopen=document.getElementById('drupal-open');if(dopen&&D.modal){dopen.onclick=function(){var s=gs(D.modal.sid);if(s)drupalOpenEdit(s)}}
     // Drupal copy HTML button
     var dcopy=document.getElementById('drupal-copy-html');if(dcopy){dcopy.onclick=function(){var ph=document.getElementById('ph');if(ph&&ph.value.trim())cpTxt(ph.value.trim());else notify('Вставьте HTML','error')}}
+    var dcreds=document.getElementById('drupal-copy-creds');if(dcreds&&D.modal){dcreds.onclick=function(){var s=gs(D.modal.sid);if(s&&s.drupalUser)cpTxt('Логин: '+s.drupalUser+'\nПароль: '+s.drupalPass);else notify('Нет данных','error')}}
     var dpl=document.getElementById('dpl');if(dpl&&D.modal)dpl.onclick=function(){doPlace(D.modal.sid)};var ubtn=document.getElementById('ubtn');if(ubtn)ubtn.onclick=function(){var i=document.getElementById('ui').value.trim(),n=document.getElementById('un').value.trim(),p=document.getElementById('up').value,r=document.getElementById('uur').value;if(!i||!n||!p)return notify('Заполните','error');if(D.users.some(function(u){return u.id===i}))return notify('ID занят','error');D.users.push({id:i,name:n,pass:p,role:r});sv();notify('✅ Добавлен','success');render()}}
 
 ld();render();
