@@ -84,13 +84,11 @@ function mkModxEvoSnippet(s){return '<?php\n// LinkForge Snippet MODX Evo — [!
 function getConnectOptions(cms){
   if(cms==='MODX Revolution')return[
     {key:'modx-allinone',icon:'⚡',bg:'linear-gradient(135deg,var(--green),#059669)',title:'Плагин (всё-в-одном)',desc:'Только плагин, без файлов',badge:'Рекомендуется'},
-    {key:'modx-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл + плагин',desc:'lp-modx.php + плагин вывода'},
-    {key:'modx-snippet',icon:'⚙️',bg:'linear-gradient(135deg,var(--pink),#db2777)',title:'Файл + сниппет',desc:'lp-modx.php + [[LinkForge]]'}
+    {key:'modx-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'Загрузить lp-modx.php по FTP'}
   ];
   if(cms==='MODX Evo')return[
     {key:'evo-allinone',icon:'⚡',bg:'linear-gradient(135deg,var(--green),#059669)',title:'Плагин (всё-в-одном)',desc:'Только плагин, без файлов',badge:'Рекомендуется'},
-    {key:'evo-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл + плагин',desc:'lp-modx.php + плагин вывода'},
-    {key:'evo-snippet',icon:'⚙️',bg:'linear-gradient(135deg,var(--pink),#db2777)',title:'Файл + сниппет',desc:'lp-modx.php + [!LinkForge!]'}
+    {key:'evo-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'Загрузить lp-modx.php по FTP'}
   ];
   return[{key:'wp-plugin',icon:'🔌',bg:'linear-gradient(135deg,var(--accent),#8b5cf6)',title:'Плагин WP',desc:'Скачать и установить'},{key:'wp-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'lp-connector.php'},{key:'wp-func',icon:'⚙️',bg:'linear-gradient(135deg,var(--orange),#ea580c)',title:'functions.php',desc:'Код в тему'}]}
 
@@ -122,11 +120,9 @@ function getConnectContent(key,site){var sec=site.secret;
       'Нажмите «Проверить связь» ниже'
     ],code:mkModxEvoAllInOne(sec),note:'Никаких файлов загружать не нужно! Плагин сам обрабатывает API-запросы и выводит ссылки.'},
 
-    // --- Legacy methods ---
-    'modx-file':{title:'Файл + плагин (MODX Revo)',steps:['Скачайте lp-modx.php','Загрузите в корень по FTP','Создайте плагин вывода (код ниже)','Событие: OnWebPagePrerender','Проверьте связь'],dlBtn:{id:'dl1',label:'📥 Скачать lp-modx.php',fn:function(){dlFile(mkModxFile(sec),'lp-modx.php')}},code:mkModxPlugin(sec),note:'Файл = API-часть. Плагин ниже = вывод ссылок на страницах.'},
-    'modx-snippet':{title:'Файл + сниппет (MODX Revo)',steps:['Скачайте и установите lp-modx.php','Элементы → Сниппеты → Новый','Название: LinkForge','В шаблоне: [[LinkForge]]'],dlBtn:{id:'dl1',label:'📥 Скачать lp-modx.php',fn:function(){dlFile(mkModxFile(sec),'lp-modx.php')}},code:mkModxSnippet(sec)},
-    'evo-file':{title:'Файл + плагин (MODX Evo)',steps:['Скачайте lp-modx.php','Загрузите в корень','Создайте плагин вывода','Событие: OnWebPagePrerender','Проверьте связь'],dlBtn:{id:'dl1',label:'📥 Скачать lp-modx.php',fn:function(){dlFile(mkModxFile(sec),'lp-modx.php')}},code:mkModxEvoPlugin(sec),note:'Файл = API. Плагин ниже = вывод.'},
-    'evo-snippet':{title:'Сниппет (MODX Evo)',steps:['Установите lp-modx.php','Сниппеты → Новый → LinkForge','В шаблоне: [!LinkForge!]'],dlBtn:{id:'dl1',label:'📥 Скачать lp-modx.php',fn:function(){dlFile(mkModxFile(sec),'lp-modx.php')}},code:mkModxEvoSnippet(sec)}
+    // --- File methods ---
+    'modx-file':{title:'Файл в корень (MODX Revo)',steps:['Скачайте файл <code>lp-modx.php</code>','Загрузите в корень сайта по FTP','Нажмите «Проверить связь» ниже'],dlBtn:{id:'dl1',label:'📥 Скачать lp-modx.php',fn:function(){dlFile(mkModxFile(sec),'lp-modx.php')}},note:'Файл обрабатывает API-запросы (связь, размещение, удаление). Ссылки хранятся в lp_links_data.json в корне сайта.'},
+    'evo-file':{title:'Файл в корень (MODX Evo)',steps:['Скачайте файл <code>lp-modx.php</code>','Загрузите в корень сайта по FTP','Нажмите «Проверить связь» ниже'],dlBtn:{id:'dl1',label:'📥 Скачать lp-modx.php',fn:function(){dlFile(mkModxFile(sec),'lp-modx.php')}},note:'Файл обрабатывает API-запросы (связь, размещение, удаление). Ссылки хранятся в lp_links_data.json в корне сайта.'}
   };
   return map[key]||{title:'?',steps:[]}}
 
