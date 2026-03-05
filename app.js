@@ -28,6 +28,60 @@ function drupalOpenEdit(site){
   setTimeout(function(){window.open(fullEdit,'drupal_edit')},5000);
 }
 
+// ========== JOOMLA API ==========
+function joomlaHeaders(site){return{'Content-Type':'application/json','Authorization':'Bearer '+(site.joomlaToken||'')}}
+
+async function joomlaCheck(site,token){
+  try{
+    var c=new AbortController();var tm=setTimeout(function(){c.abort()},10000);
+    var r=await fetch(baseUrl(site)+'/api/index.php/v1/content/articles?page[limit]=1',{headers:joomlaHeaders(site),signal:c.signal,mode:'cors'});
+    clearTimeout(tm);
+    if(r.ok){return{verified:token,method:'joomla-api',cms:'joomla'}}
+  }catch(e){}
+  return null}
+
+async function joomlaPlace(site,html,pl){
+  var h=joomlaHeaders(site);
+  var mid=site.joomlaModuleId;
+  if(mid){
+    // PATCH existing module — append html
+    try{
+      var gr=await fetch(baseUrl(site)+'/api/index.php/v1/modules/site/'+mid,{headers:h});
+      var gj=await gr.json();
+      var oldHtml=(gj.data&&gj.data.attributes&&gj.data.attributes.content)||'';
+      var id='lp_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      var newHtml=oldHtml+'<!--lf:'+id+'-->'+html+'<!--/lf:'+id+'-->';
+      var r=await fetch(baseUrl(site)+'/api/index.php/v1/modules/site/'+mid,{method:'PATCH',headers:h,body:JSON.stringify({content:newHtml})});
+      if(r.ok)return{status:'placed',id:id};
+      return{error:'PATCH failed ('+r.status+')'}
+    }catch(e){return{error:e.message}}
+  }else{
+    // Create new Custom HTML module
+    var id='lp_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    var body='<!--lf:'+id+'-->'+html+'<!--/lf:'+id+'-->';
+    try{
+      var r=await fetch(baseUrl(site)+'/api/index.php/v1/modules/site',{method:'POST',headers:h,body:JSON.stringify({module:'mod_custom',title:'LinkForge Links',position:site.joomlaPosition||'footer',content:body,published:1,access:1,language:'*'})});
+      var j=await r.json();
+      if(j.data&&j.data.id)return{status:'placed',id:id,moduleId:j.data.id};
+      if(r.ok)return{status:'placed',id:id};
+      return{error:(j.errors&&j.errors[0]&&j.errors[0].title)||'POST failed'}
+    }catch(e){return{error:e.message}}
+  }}
+
+async function joomlaRemove(site,linkId){
+  var h=joomlaHeaders(site);
+  var mid=site.joomlaModuleId;if(!mid)return{status:'removed'};
+  try{
+    var gr=await fetch(baseUrl(site)+'/api/index.php/v1/modules/site/'+mid,{headers:h});
+    var gj=await gr.json();
+    var oldHtml=(gj.data&&gj.data.attributes&&gj.data.attributes.content)||'';
+    var re=new RegExp('<!--lf:'+linkId+'-->.*?<!--/lf:'+linkId+'-->','gs');
+    var newHtml=oldHtml.replace(re,'');
+    var r=await fetch(baseUrl(site)+'/api/index.php/v1/modules/site/'+mid,{method:'PATCH',headers:h,body:JSON.stringify({content:newHtml})});
+    if(r.ok)return{status:'removed'};
+    return{error:'PATCH failed'}
+  }catch(e){return{error:e.message}}}
+
 // ========== CHECK ==========
 async function doCheck(sid){var site=gs(sid);if(!site)return;D.ckid=sid;
   // Save inject path if present
@@ -39,8 +93,19 @@ async function doCheck(sid){var site=gs(sid);if(!site)return;D.ckid=sid;
   // Save Drupal edit URL if present
   var deEl=document.getElementById('drupal-edit-url');
   if(deEl){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid)D.sites[i].drupalEditUrl=deEl.value.trim()}site=gs(sid)}
+  // Save Joomla token and position if present
+  var jtEl=document.getElementById('joomla-token');
+  if(jtEl){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid)D.sites[i].joomlaToken=jtEl.value.trim()}site=gs(sid)}
+  var jpEl=document.getElementById('joomla-position');
+  if(jpEl){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid)D.sites[i].joomlaPosition=jpEl.value.trim()||'footer'}site=gs(sid)}
   render();
   var connected=false,method=null,token='tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+
+  // Joomla API check
+  if(!connected&&site.cms==='Joomla'&&site.joomlaToken){
+    var jr=await joomlaCheck(site,token);
+    if(jr&&jr.verified===token){connected=true;method=jr.method}
+  }
 
   // Drupal simple login mode — just check that credentials and edit URL are set
   if(site.cms==='Drupal'&&site.drupalUser&&site.drupalPass&&site.drupalEditUrl){
@@ -70,6 +135,13 @@ async function doPlace(sid){var site=gs(sid);if(!site||!site.connected)return no
   var plEl=document.querySelector('.pb.on');var pl=plEl?plEl.dataset.pl:'homepage';
   if(!html)return notify('Вставьте HTML','error');
   var m=site.connectionMethod||'';var url;
+  if(m==='joomla-api'){
+    var jr=await joomlaPlace(site,html,pl);
+    if(jr.status==='placed'){var tmp=document.createElement('div');tmp.innerHTML=html;var pv=(tmp.textContent||html).substring(0,80);
+      if(jr.moduleId){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid)D.sites[i].joomlaModuleId=jr.moduleId}}
+      for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.push({html:html,placement:pl,id:jr.id,pv:pv,at:new Date().toISOString()})}}
+      log('Ссылка ✓',pv+' → '+site.url);D.modal=null;sv();notify('✅ Размещено!','success')}
+    else notify('Ошибка: '+(jr.error||'unknown'),'error');render();return}
   if(m==='drupal-login'){
     drupalOpenEdit(site);
     var tmp=document.createElement('div');tmp.innerHTML=html;var pv=(tmp.textContent||html).substring(0,80);
@@ -90,6 +162,10 @@ async function doPlace(sid){var site=gs(sid);if(!site||!site.connected)return no
 async function doRemoveLink(sid,linkId,linkIdx){var site=gs(sid);if(!site)return;
   if(!site.connected){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.splice(linkIdx,1)}}log('Удалена',site.url);sv();notify('Удалена');render();return}
   var m=site.connectionMethod||'';var url;
+  if(m==='joomla-api'){
+    var jr=await joomlaRemove(site,linkId);
+    if(jr.status==='removed'){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.splice(linkIdx,1)}}log('Удалена',site.url);sv();notify('✅ Удалена','success')}
+    else notify('Ошибка: '+(jr.error||'unknown'),'error');render();return}
   if(m==='drupal-login'){
     for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.splice(linkIdx,1)}}
     log('Удалена (вручную)',site.url);sv();notify('Удалена из списка. Не забудьте удалить вручную на сайте.');render();return}
@@ -138,6 +214,10 @@ function getConnectOptions(cms){
   if(cms==='Drupal')return[
     {key:'drupal-login',icon:'🔗',bg:'linear-gradient(135deg,#2196F3,#1565C0)',title:'Логин + редактирование',desc:'Логин/пароль + URL страницы редактирования'},
     {key:'drupal-inject',icon:'💉',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}
+  ];
+  if(cms==='Joomla')return[
+    {key:'joomla-api',icon:'🔗',bg:'linear-gradient(135deg,#f44336,#c62828)',title:'REST API + модуль',desc:'API-токен, автоматическое размещение',badge:'Рекомендуется'},
+    {key:'joomla-inject',icon:'💉',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}
   ];
   return[{key:'wp-plugin',icon:'🔌',bg:'linear-gradient(135deg,var(--accent),#8b5cf6)',title:'Плагин WP',desc:'Скачать и установить'},{key:'wp-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'lp-connector.php'},{key:'wp-func',icon:'⚙️',bg:'linear-gradient(135deg,var(--orange),#ea580c)',title:'functions.php',desc:'Код в тему'},{key:'wp-inject',icon:'💉',bg:'linear-gradient(135deg,var(--pink),#db2777)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}]}
 
@@ -208,7 +288,25 @@ function getConnectContent(key,site){var sec=site.secret;
       'Вставьте код <strong>сразу после</strong> открывающего <code>&lt;?php</code>',
       'Сохраните файл',
       'Укажите путь к файлу ниже и нажмите «Проверить связь»'
-    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе Drupal. Ссылки размещаются автоматически через панель. Данные хранятся в lp_links_data.json рядом с файлом.'}
+    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе Drupal. Ссылки размещаются автоматически через панель. Данные хранятся в lp_links_data.json рядом с файлом.'},
+
+    // --- Joomla REST API ---
+    'joomla-api':{title:'Подключение через REST API Joomla',steps:[
+      'В админке Joomla: ваш профиль пользователя',
+      'Вкладка <code>Токен Joomla</code> → сохраните профиль для генерации',
+      'Скопируйте токен и вставьте ниже',
+      'Укажите позицию модуля (например <code>footer</code>)',
+      'Нажмите «Проверить связь»'
+    ],hasJoomlaAuth:true,note:'LinkForge создаст модуль «Custom HTML» и будет автоматически добавлять/удалять ссылки через REST API. Ссылки в серверном HTML — видны через Ctrl+U.'},
+
+    // --- Joomla inject ---
+    'joomla-inject':{title:'Вставить код в PHP-файл Joomla',steps:[
+      'Скопируйте код ниже',
+      'Откройте <code>index.php</code> в корне сайта',
+      'Вставьте код <strong>сразу после</strong> открывающего <code>&lt;?php</code>',
+      'Сохраните файл',
+      'Укажите путь к файлу ниже и нажмите «Проверить связь»'
+    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе Joomla. Данные хранятся в lp_links_data.json рядом с файлом.'}
   };
   return map[key]||{title:'?',steps:[]}}
 
@@ -221,11 +319,11 @@ function bLogin(){var b=document.getElementById('lbtn');if(!b)return;var go=func
 function rSB(){var adm=D.cu&&D.cu.role==='admin';var ts=[{id:'sites',i:'🌐',l:'Сайты'},{id:'add',i:'➕',l:'Добавить'},{id:'logs',i:'📋',l:'Логи'}];if(adm)ts.push({id:'users',i:'👥',l:'Команда'});return '<div class="sb"><div class="sb-logo"><div class="brand"><div class="brand-icon">⚡</div><div><h1>LinkForge</h1><small>Smart Links</small></div></div></div><div class="sb-sep"></div>'+ts.map(function(t){return '<button class="nb '+(D.tab===t.id?'on':'')+'" data-tab="'+t.id+'"><span>'+t.i+'</span><span class="nl"> '+t.l+'</span></button>'}).join('')+'<div class="sb-ft"><div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="avatar">'+(D.cu?D.cu.name[0]:'A')+'</div><div><div style="font-size:13px;font-weight:600;color:var(--text)">'+(D.cu?D.cu.name:'')+'</div><div style="font-size:10px;color:var(--text3)">'+(D.cu?D.cu.role:'')+'</div></div></div><button class="btn bg bsm" style="width:100%" id="out">Выйти</button></div></div>'}
 
 function rTab(){if(D.tab==='add')return rAdd();if(D.tab==='logs')return rLogs();if(D.tab==='users')return rUsers();return rSites()}
-function cmsTag(c){if(c==='Drupal')return '<span class="tag tdrupal">'+esc(c)+'</span>';return c.indexOf('MODX')>=0?'<span class="tag tmodx">'+esc(c)+'</span>':'<span class="tag tc">'+esc(c)+'</span>'}
+function cmsTag(c){if(c==='Drupal')return '<span class="tag tdrupal">'+esc(c)+'</span>';if(c==='Joomla')return '<span class="tag tjoomla">'+esc(c)+'</span>';return c.indexOf('MODX')>=0?'<span class="tag tmodx">'+esc(c)+'</span>':'<span class="tag tc">'+esc(c)+'</span>'}
 
 function rSites(){var tl=D.sites.reduce(function(a,s){return a+s.links.length},0),cn=D.sites.filter(function(s){return s.connected}).length;var h='<div class="sec-header"><h1>Мои <span>сайты</span></h1><div style="display:flex;gap:8px;align-items:center">'+(tl?'<button class="btn bg bsm" id="exp-all">📥 Экспорт</button>':'')+'<button class="btn bp bsm" data-tab="add">+ Добавить</button></div></div>';h+='<div class="stats"><div class="stat-card"><div class="num">'+D.sites.length+'</div><div class="label">Сайтов</div></div><div class="stat-card"><div class="num">'+cn+'</div><div class="label">Подключено</div></div><div class="stat-card"><div class="num">'+tl+'</div><div class="label">Ссылок</div></div></div>';if(!D.sites.length)return h+'<div class="empty-state"><div class="icon">🌐</div><div class="title">Нет сайтов</div><div class="desc">Добавьте первый</div><button class="btn bp" data-tab="add">+ Добавить</button></div>';D.sites.forEach(function(s){h+='<div class="card'+(s.connected?' card-glow':'')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px"><div style="flex:1;min-width:200px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap"><span class="dot '+(s.connected?'dg':'dr')+'"></span><span style="font-size:17px;font-weight:700">'+esc(s.name)+'</span>'+cmsTag(s.cms)+(s.connected&&s.connectionMethod?'<span class="tag tm">● '+esc(s.connectionMethod)+'</span>':'')+'</div><div style="font-size:13px;color:var(--text3)">'+esc(s.url)+'</div><div style="font-size:12px;color:var(--text3);margin-top:4px"><span style="color:var(--accent2);font-weight:600">'+s.links.length+'</span> ссылок'+(s.lastCheck?' · '+fmt(s.lastCheck):'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bg bsm" data-do="conn" data-id="'+s.id+'">🔌 Связь</button><button class="btn bg bsm" data-do="chk" data-id="'+s.id+'" '+(D.ckid===s.id?'disabled':'')+'>'+(D.ckid===s.id?'⏳':'🔍')+' Проверить</button><button class="btn bsm '+(s.connected?'bp':'boff')+'" data-do="place" data-id="'+s.id+'">🔗 Разместить</button>'+(s.links.length?'<button class="btn bg bsm" data-do="export" data-id="'+s.id+'">📥</button>':'')+(D.cu&&D.cu.role==='admin'?'<button class="btn bd bsm" data-do="del" data-id="'+s.id+'">🗑</button>':'')+'</div></div>';if(s.links.length){h+='<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Ссылки</div>';s.links.forEach(function(l,li){h+='<div class="link-item"><span>'+(l.placement==='sitewide'?'🌐':'🏠')+'</span><span style="color:var(--text);flex:1;font-size:12px">'+esc((l.pv||l.html||'').substring(0,80))+'</span><span style="color:var(--text3);font-size:10px">'+fmt(l.at)+'</span><button class="link-del" data-do="rmlink" data-sid="'+s.id+'" data-lid="'+(l.id||'')+'" data-lidx="'+li+'">✕</button></div>'});h+='</div>'}h+='</div>'});return h}
 
-function rAdd(){return '<div style="max-width:520px"><div class="sec-header"><h1>Добавить <span>сайт</span></h1></div><div class="card" style="padding:28px"><div class="ig"><label class="lbl">Название</label><input class="inp" id="an" placeholder="Мой сайт"></div><div class="ig"><label class="lbl">URL</label><input class="inp" id="au" placeholder="https://example.com"></div><div class="ig"><label class="lbl">CMS</label><select class="inp" id="ac"><option value="WordPress">WordPress</option><option value="MODX Revolution">MODX Revolution</option><option value="MODX Evo">MODX Evolution</option><option value="Drupal">Drupal 8/9/10+</option></select></div><button class="btn bp blg" style="width:100%;margin-top:8px" id="abtn">Добавить</button></div></div>'}
+function rAdd(){return '<div style="max-width:520px"><div class="sec-header"><h1>Добавить <span>сайт</span></h1></div><div class="card" style="padding:28px"><div class="ig"><label class="lbl">Название</label><input class="inp" id="an" placeholder="Мой сайт"></div><div class="ig"><label class="lbl">URL</label><input class="inp" id="au" placeholder="https://example.com"></div><div class="ig"><label class="lbl">CMS</label><select class="inp" id="ac"><option value="WordPress">WordPress</option><option value="MODX Revolution">MODX Revolution</option><option value="MODX Evo">MODX Evolution</option><option value="Drupal">Drupal 8/9/10+</option><option value="Joomla">Joomla 4/5</option></select></div><button class="btn bp blg" style="width:100%;margin-top:8px" id="abtn">Добавить</button></div></div>'}
 
 function rLogs(){var h='<div class="sec-header"><h1>История <span>действий</span></h1></div>';if(!D.logs.length)return h+'<div class="empty-state"><div class="icon">📋</div><div class="title">Пусто</div></div>';h+='<div class="card" style="padding:8px 12px">';D.logs.slice().reverse().forEach(function(l){h+='<div class="lr"><span style="color:var(--text3);min-width:140px;font-size:12px">'+fmt(l.t)+'</span><span style="color:var(--accent2);min-width:50px;font-size:12px;font-weight:600">'+esc(l.u)+'</span><span style="color:var(--text);font-weight:600;min-width:120px;font-size:13px">'+esc(l.a)+'</span><span style="color:var(--text3);font-size:12px">'+esc(l.d||'')+'</span></div>'});return h+'</div>'}
 
@@ -254,6 +352,7 @@ function rModal(){if(!D.modal)return '';var site=gs(D.modal.sid);if(!site)return
       if(cc.hasPathInput)inner+='<div class="ig" style="margin-top:16px"><label class="lbl">Путь к файлу на сайте</label><input class="inp" id="inject-path" placeholder="/index.php" value="'+(site.injectPath||'/index.php')+'"><div style="font-size:11px;color:var(--text3);margin-top:6px">Укажите путь от корня сайта к файлу, в который вставили код. Например: <code>/index.php</code>, <code>/about/info.php</code></div></div>';
       if(cc.hasDrupalAuth)inner+='<div style="margin-top:16px;padding:20px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2)"><div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-bottom:12px">Авторизация Drupal</div><div class="ig"><label class="lbl">Логин</label><input class="inp" id="drupal-user" placeholder="admin" value="'+esc(site.drupalUser||'')+'"></div><div class="ig" style="margin-bottom:0"><label class="lbl">Пароль</label><input class="inp" id="drupal-pass" type="password" placeholder="Пароль" value="'+esc(site.drupalPass||'')+'"></div></div>';
       if(cc.hasDrupalEditUrl)inner+='<div class="ig" style="margin-top:16px"><label class="lbl">URL страницы редактирования</label><input class="inp" id="drupal-edit-url" placeholder="/node/10/edit" value="'+esc(site.drupalEditUrl||'')+'"><div style="font-size:11px;color:var(--text3);margin-top:6px">Путь к странице редактирования, например: <code>/node/10/edit</code></div></div>';
+      if(cc.hasJoomlaAuth)inner+='<div style="margin-top:16px;padding:20px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2)"><div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-bottom:12px">Joomla API</div><div class="ig"><label class="lbl">API-токен</label><input class="inp" id="joomla-token" placeholder="Вставьте токен из профиля" value="'+esc(site.joomlaToken||'')+'"></div><div class="ig" style="margin-bottom:0"><label class="lbl">Позиция модуля</label><input class="inp" id="joomla-position" placeholder="footer" value="'+esc(site.joomlaPosition||'footer')+'"><div style="font-size:11px;color:var(--text3);margin-top:6px">Позиция в шаблоне куда выводить ссылки. Типичные: <code>footer</code>, <code>sidebar-right</code>, <code>bottom</code></div></div></div>';
       if(cc.note)inner+='<div class="note-box">💡 '+cc.note+'</div>';
     }
     var isDrupalLogin=v&&v==='drupal-login';
@@ -271,6 +370,10 @@ function bindAll(){document.querySelectorAll('[data-tab]').forEach(function(e){e
     if(duEl&&dpEl&&D.modal){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===D.modal.sid){D.sites[i].drupalUser=duEl.value.trim();D.sites[i].drupalPass=dpEl.value}}sv()}
     var deEl=document.getElementById('drupal-edit-url');
     if(deEl&&D.modal){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===D.modal.sid)D.sites[i].drupalEditUrl=deEl.value.trim()}sv()}
+    var jtEl=document.getElementById('joomla-token');
+    if(jtEl&&D.modal){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===D.modal.sid)D.sites[i].joomlaToken=jtEl.value.trim()}sv()}
+    var jpEl=document.getElementById('joomla-position');
+    if(jpEl&&D.modal){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===D.modal.sid)D.sites[i].joomlaPosition=jpEl.value.trim()||'footer'}sv()}
     doCheck(D.modal.sid)};var gc=document.getElementById('gc');if(gc&&D.modal)gc.onclick=function(){D.modal={t:'conn',sid:D.modal.sid,v:null};render()};document.querySelectorAll('[data-pl]').forEach(function(e){e.onclick=function(){document.querySelectorAll('.pb').forEach(function(b){b.classList.remove('on')});e.classList.add('on')}});
     // Drupal open editor button
     var dopen=document.getElementById('drupal-open');if(dopen&&D.modal){dopen.onclick=function(){var s=gs(D.modal.sid);if(s)drupalOpenEdit(s)}}
