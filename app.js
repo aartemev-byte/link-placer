@@ -18,16 +18,27 @@ function drupalOpenEdit(site){
   var editUrl=site.drupalEditUrl||'';
   if(!editUrl)return notify('Укажите URL страницы','error');
   if(editUrl.indexOf('http')!==0)editUrl=baseUrl(site)+(editUrl[0]==='/'?'':'/')+editUrl;
-  // Open login form in new tab via form POST, Drupal will redirect to front page after login
-  var form=document.createElement('form');
-  form.method='POST';form.action=baseUrl(site)+'/user/login?destination='+encodeURIComponent(editUrl.replace(baseUrl(site),''));
-  form.target='_blank';form.style.display='none';
-  var fn=document.createElement('input');fn.name='name';fn.value=site.drupalUser||'';form.appendChild(fn);
-  var fp=document.createElement('input');fp.name='pass';fp.value=site.drupalPass||'';form.appendChild(fp);
-  var fi=document.createElement('input');fi.name='form_id';fi.value='user_login_form';form.appendChild(fi);
-  var fo=document.createElement('input');fo.name='op';fo.value='Se connecter';form.appendChild(fo);
-  document.body.appendChild(form);form.submit();document.body.removeChild(form);
-  log('Drupal →',editUrl);notify('🔗 Страница открыта','success');
+  var user=site.drupalUser||'';
+  var pass=site.drupalPass||'';
+  if(!user||!pass){window.open(editUrl,'_blank');log('Drupal →',editUrl);notify('🔗 Страница открыта','success');return}
+  // Create a self-submitting HTML page that logs into Drupal and redirects to edit page
+  var dest=editUrl.replace(baseUrl(site),'');
+  var loginUrl=baseUrl(site)+'/user/login';
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Вход...</title></head><body>'
+    +'<p style="font-family:sans-serif;text-align:center;margin-top:60px;color:#666">⏳ Выполняется вход...</p>'
+    +'<form id="lf" method="POST" action="'+loginUrl+'?destination='+encodeURIComponent(dest)+'">'
+    +'<input type="hidden" name="name" value="'+esc(user)+'">'
+    +'<input type="hidden" name="pass" value="'+esc(pass)+'">'
+    +'<input type="hidden" name="form_id" value="user_login_form">'
+    +'<input type="hidden" name="op" value="Se connecter">'
+    +'</form>'
+    +'<script>document.getElementById("lf").submit();<\/script>'
+    +'</body></html>';
+  var blob=new Blob([html],{type:'text/html'});
+  var blobUrl=URL.createObjectURL(blob);
+  window.open(blobUrl,'_blank');
+  setTimeout(function(){URL.revokeObjectURL(blobUrl)},5000);
+  log('Drupal →',editUrl);notify('🔗 Вход и переход...','success');
 }
 
 // ========== CHECK ==========
