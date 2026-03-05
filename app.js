@@ -13,25 +13,101 @@ function dlFile(c,f){var a=document.createElement('a');a.href=URL.createObjectUR
 function cpTxt(t){navigator.clipboard.writeText(t).then(function(){notify('Скопировано!')}).catch(function(){notify('Ошибка','error')})}
 function baseUrl(s){return s.url.replace(/\/+$/,'')}
 
+// ========== DRUPAL API ==========
+function drupalHeaders(site){return{'Content-Type':'application/json','Authorization':'Basic '+btoa((site.drupalUser||'')+':'+(site.drupalPass||''))}}
+
+async function drupalCheck(site,token){
+  try{
+    // Try to get JSONAPI or REST endpoint to verify Drupal is alive and authenticated
+    var c=new AbortController();var tm=setTimeout(function(){c.abort()},10000);
+    var r=await fetch(baseUrl(site)+'/jsonapi',{headers:drupalHeaders(site),signal:c.signal,mode:'cors'});
+    clearTimeout(tm);
+    if(r.status===200){return{verified:token,method:'drupal-api',cms:'drupal'}}
+    // Fallback: try node endpoint
+    c=new AbortController();tm=setTimeout(function(){c.abort()},10000);
+    r=await fetch(baseUrl(site)+'/entity/block_content?_format=json',{headers:drupalHeaders(site),signal:c.signal,mode:'cors'});
+    clearTimeout(tm);
+    if(r.status===200||r.status===403){return{verified:token,method:'drupal-api',cms:'drupal'}}
+  }catch(e){}
+  return null}
+
+async function drupalPlace(site,html,pl){
+  var h=drupalHeaders(site);h['X-CSRF-Token']=await drupalToken(site);
+  // First try to find existing linkforge block
+  var bid=site.drupalBlockId;
+  if(bid){
+    // PATCH existing block — append html
+    try{
+      var gr=await fetch(baseUrl(site)+'/entity/block_content/'+bid+'?_format=json',{headers:h});
+      var gj=await gr.json();
+      var oldHtml=(gj.body&&gj.body[0]&&gj.body[0].value)||'';
+      var id='lp_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      var newHtml=oldHtml+'<!--lf:'+id+'-->'+html+'<!--/lf:'+id+'-->';
+      var r=await fetch(baseUrl(site)+'/entity/block_content/'+bid+'?_format=json',{method:'PATCH',headers:h,body:JSON.stringify({body:[{value:newHtml,format:'full_html'}]})});
+      if(r.ok)return{status:'placed',id:id};
+      var j=await r.json();return{error:j.message||'PATCH failed'}
+    }catch(e){return{error:e.message}}
+  }else{
+    // Create new block_content
+    var id='lp_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    var body='<!--lf:'+id+'-->'+html+'<!--/lf:'+id+'-->';
+    try{
+      var r=await fetch(baseUrl(site)+'/entity/block_content?_format=json',{method:'POST',headers:h,body:JSON.stringify({info:[{value:'LinkForge Links'}],type:[{target_id:'basic'}],body:[{value:body,format:'full_html'}]})});
+      var j=await r.json();
+      if(j.id&&j.id[0])return{status:'placed',id:id,blockId:j.id[0].value};
+      if(r.ok)return{status:'placed',id:id};
+      return{error:j.message||'POST failed'}
+    }catch(e){return{error:e.message}}
+  }}
+
+async function drupalRemove(site,linkId){
+  var h=drupalHeaders(site);h['X-CSRF-Token']=await drupalToken(site);
+  var bid=site.drupalBlockId;if(!bid)return{status:'removed'};
+  try{
+    var gr=await fetch(baseUrl(site)+'/entity/block_content/'+bid+'?_format=json',{headers:h});
+    var gj=await gr.json();
+    var oldHtml=(gj.body&&gj.body[0]&&gj.body[0].value)||'';
+    var re=new RegExp('<!--lf:'+linkId+'-->.*?<!--/lf:'+linkId+'-->','gs');
+    var newHtml=oldHtml.replace(re,'');
+    var r=await fetch(baseUrl(site)+'/entity/block_content/'+bid+'?_format=json',{method:'PATCH',headers:h,body:JSON.stringify({body:[{value:newHtml,format:'full_html'}]})});
+    if(r.ok)return{status:'removed'};
+    return{error:'PATCH failed'}
+  }catch(e){return{error:e.message}}}
+
+async function drupalToken(site){
+  try{var r=await fetch(baseUrl(site)+'/session/token',{headers:drupalHeaders(site)});return await r.text()}catch(e){return''}}
+
 // ========== CHECK ==========
 async function doCheck(sid){var site=gs(sid);if(!site)return;D.ckid=sid;
   // Save inject path if present
   var ipEl=document.getElementById('inject-path');
   if(ipEl){var ip=ipEl.value.trim();if(ip){if(ip[0]!=='/')ip='/'+ip;for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid)D.sites[i].injectPath=ip}site=gs(sid)}}
+  // Save Drupal credentials if present
+  var duEl=document.getElementById('drupal-user'),dpEl=document.getElementById('drupal-pass');
+  if(duEl&&dpEl){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].drupalUser=duEl.value.trim();D.sites[i].drupalPass=dpEl.value}}site=gs(sid)}
   render();
   var connected=false,method=null,token='tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
-  var eps=[
-    {url:baseUrl(site)+'/wp-json/lp-api/v2/verify',m:'plugin'},
-    {url:baseUrl(site)+'/lp-connector.php?action=verify',m:'file'},
-    {url:baseUrl(site)+'/lp-modx.php?action=verify',m:'file-modx'},
-    {url:baseUrl(site)+'/?lp_action=verify',m:'modx-plugin'}
-  ];
-  // Add inject endpoint if path is set
-  if(site.injectPath){eps.push({url:baseUrl(site)+site.injectPath+'?lp_action=verify',m:'inject'})}
-  for(var ei=0;ei<eps.length;ei++){if(connected)break;var ep=eps[ei];
-    try{var c=new AbortController();var tm=setTimeout(function(){c.abort()},10000);
-      var r=await fetch(ep.url,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({token:token}),signal:c.signal,mode:'cors'});
-      clearTimeout(tm);if(r.status===200){var txt=await r.text();try{var j=JSON.parse(txt);if(j.verified===token){connected=true;method=j.method||ep.m}}catch(e){}}}catch(e){}}
+
+  // Try Drupal API first if Drupal CMS and credentials are set
+  if(site.cms==='Drupal'&&site.drupalUser&&site.drupalPass){
+    var dr=await drupalCheck(site,token);
+    if(dr&&dr.verified===token){connected=true;method=dr.method}
+  }
+
+  if(!connected){
+    var eps=[
+      {url:baseUrl(site)+'/wp-json/lp-api/v2/verify',m:'plugin'},
+      {url:baseUrl(site)+'/lp-connector.php?action=verify',m:'file'},
+      {url:baseUrl(site)+'/lp-modx.php?action=verify',m:'file-modx'},
+      {url:baseUrl(site)+'/?lp_action=verify',m:'modx-plugin'}
+    ];
+    // Add inject endpoint if path is set
+    if(site.injectPath){eps.push({url:baseUrl(site)+site.injectPath+'?lp_action=verify',m:'inject'})}
+    for(var ei=0;ei<eps.length;ei++){if(connected)break;var ep=eps[ei];
+      try{var c=new AbortController();var tm=setTimeout(function(){c.abort()},10000);
+        var r=await fetch(ep.url,{method:'POST',headers:{'Content-Type':'application/json','X-LP-Secret':site.secret},body:JSON.stringify({token:token}),signal:c.signal,mode:'cors'});
+        clearTimeout(tm);if(r.status===200){var txt=await r.text();try{var j=JSON.parse(txt);if(j.verified===token){connected=true;method=j.method||ep.m}}catch(e){}}}catch(e){}}
+  }
   for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].connected=connected;D.sites[i].connectionMethod=connected?method:null;D.sites[i].lastCheck=new Date().toISOString()}}
   log(connected?'Связь ✓':'Связь ✗',site.url+(method?' ('+method+')':''));D.ckid=null;D.modal=null;sv();notify(connected?'✅ Связь ('+method+')':'❌ Нет связи',connected?'success':'error');render()}
 
@@ -41,6 +117,13 @@ async function doPlace(sid){var site=gs(sid);if(!site||!site.connected)return no
   var plEl=document.querySelector('.pb.on');var pl=plEl?plEl.dataset.pl:'homepage';
   if(!html)return notify('Вставьте HTML','error');
   var m=site.connectionMethod||'';var url;
+  if(m==='drupal-api'){
+    var dr=await drupalPlace(site,html,pl);
+    if(dr.status==='placed'){var tmp=document.createElement('div');tmp.innerHTML=html;var pv=(tmp.textContent||html).substring(0,80);
+      if(dr.blockId){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid)D.sites[i].drupalBlockId=dr.blockId}}
+      for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.push({html:html,placement:pl,id:dr.id,pv:pv,at:new Date().toISOString()})}}
+      log('Ссылка ✓',pv+' → '+site.url);D.modal=null;sv();notify('✅ Размещено!','success')}
+    else notify('Ошибка: '+(dr.error||'unknown'),'error');render();return}
   if(m==='inject')url=baseUrl(site)+(site.injectPath||'/index.php')+'?lp_action=place';
   else if(m==='modx-plugin'||m==='modx-plugin-evo')url=baseUrl(site)+'/?lp_action=place';
   else if(m.indexOf('modx')>=0||m==='snippet')url=baseUrl(site)+'/lp-modx.php?action=place';
@@ -56,6 +139,10 @@ async function doPlace(sid){var site=gs(sid);if(!site||!site.connected)return no
 async function doRemoveLink(sid,linkId,linkIdx){var site=gs(sid);if(!site)return;
   if(!site.connected){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.splice(linkIdx,1)}}log('Удалена',site.url);sv();notify('Удалена');render();return}
   var m=site.connectionMethod||'';var url;
+  if(m==='drupal-api'){
+    var dr=await drupalRemove(site,linkId);
+    if(dr.status==='removed'){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===sid){D.sites[i].links.splice(linkIdx,1)}}log('Удалена',site.url);sv();notify('✅ Удалена','success')}
+    else notify('Ошибка: '+(dr.error||'unknown'),'error');render();return}
   if(m==='inject')url=baseUrl(site)+(site.injectPath||'/index.php')+'?lp_action=remove';
   else if(m==='modx-plugin'||m==='modx-plugin-evo')url=baseUrl(site)+'/?lp_action=remove';
   else if(m.indexOf('modx')>=0)url=baseUrl(site)+'/lp-modx.php?action=remove';
@@ -97,6 +184,10 @@ function getConnectOptions(cms){
   if(cms==='MODX Evo')return[
     {key:'evo-allinone',icon:'⚡',bg:'linear-gradient(135deg,var(--green),#059669)',title:'Плагин (всё-в-одном)',desc:'Только плагин, без файлов',badge:'Рекомендуется'},
     {key:'evo-inject',icon:'💉',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Вставить код в PHP-файл',desc:'В любой .php файл сайта'}
+  ];
+  if(cms==='Drupal')return[
+    {key:'drupal-api',icon:'🔗',bg:'linear-gradient(135deg,#2196F3,#1565C0)',title:'REST API (через админку)',desc:'Без файлов, только настройка в админке',badge:'Рекомендуется'},
+    {key:'drupal-inject',icon:'💉',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Вставить код в PHP-файл',desc:'В index.php или другой файл'}
   ];
   return[{key:'wp-plugin',icon:'🔌',bg:'linear-gradient(135deg,var(--accent),#8b5cf6)',title:'Плагин WP',desc:'Скачать и установить'},{key:'wp-file',icon:'📄',bg:'linear-gradient(135deg,var(--cyan),#0891b2)',title:'Файл в корень',desc:'lp-connector.php'},{key:'wp-func',icon:'⚙️',bg:'linear-gradient(135deg,var(--orange),#ea580c)',title:'functions.php',desc:'Код в тему'}]}
 
@@ -142,7 +233,27 @@ function getConnectContent(key,site){var sec=site.secret;
       'Вставьте код <strong>сразу после</strong> открывающего <code>&lt;?php</code>',
       'Сохраните файл',
       'Укажите путь к файлу ниже и нажмите «Проверить связь»'
-    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе файла. Данные хранятся в lp_links_data.json рядом с файлом.'}
+    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе файла. Данные хранятся в lp_links_data.json рядом с файлом.'},
+
+    // --- Drupal REST API ---
+    'drupal-api':{title:'Подключение через REST API Drupal',steps:[
+      'Откройте админку Drupal: <code>/admin/modules</code>',
+      'Включите модули: <code>RESTful Web Services</code>, <code>Serialization</code>, <code>HTTP Basic Authentication</code>',
+      'Перейдите <code>/admin/people</code> → создайте пользователя (или используйте admin)',
+      'Роль пользователя должна иметь права: <code>Создание контента Block Content</code>, <code>Управление блоками</code>',
+      'Перейдите <code>/admin/structure/block</code> → «Разместить блок» → <code>Content: Linkforge</code> в регион <code>Footer</code>',
+      'Укажите логин и пароль Drupal ниже',
+      'Нажмите «Проверить связь»'
+    ],hasDrupalAuth:true,note:'LinkForge будет создавать и редактировать кастомный блок через стандартный REST API Drupal. Ссылки попадают в серверный HTML (видны через Ctrl+U).'},
+
+    // --- Drupal inject ---
+    'drupal-inject':{title:'Вставить код в PHP-файл Drupal',steps:[
+      'Скопируйте код ниже',
+      'Откройте <code>index.php</code> в корне сайта Drupal',
+      'Вставьте код <strong>сразу после</strong> открывающего <code>&lt;?php</code>',
+      'Сохраните файл',
+      'Укажите путь к файлу ниже и нажмите «Проверить связь»'
+    ],code:mkModxInject(sec),hasPathInput:true,note:'Код активируется только при запросе с параметром ?lp_action=... и не мешает работе Drupal. Данные хранятся в lp_links_data.json рядом с файлом.'}
   };
   return map[key]||{title:'?',steps:[]}}
 
@@ -155,11 +266,11 @@ function bLogin(){var b=document.getElementById('lbtn');if(!b)return;var go=func
 function rSB(){var adm=D.cu&&D.cu.role==='admin';var ts=[{id:'sites',i:'🌐',l:'Сайты'},{id:'add',i:'➕',l:'Добавить'},{id:'logs',i:'📋',l:'Логи'}];if(adm)ts.push({id:'users',i:'👥',l:'Команда'});return '<div class="sb"><div class="sb-logo"><div class="brand"><div class="brand-icon">⚡</div><div><h1>LinkForge</h1><small>Smart Links</small></div></div></div><div class="sb-sep"></div>'+ts.map(function(t){return '<button class="nb '+(D.tab===t.id?'on':'')+'" data-tab="'+t.id+'"><span>'+t.i+'</span><span class="nl"> '+t.l+'</span></button>'}).join('')+'<div class="sb-ft"><div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="avatar">'+(D.cu?D.cu.name[0]:'A')+'</div><div><div style="font-size:13px;font-weight:600;color:var(--text)">'+(D.cu?D.cu.name:'')+'</div><div style="font-size:10px;color:var(--text3)">'+(D.cu?D.cu.role:'')+'</div></div></div><button class="btn bg bsm" style="width:100%" id="out">Выйти</button></div></div>'}
 
 function rTab(){if(D.tab==='add')return rAdd();if(D.tab==='logs')return rLogs();if(D.tab==='users')return rUsers();return rSites()}
-function cmsTag(c){return c.indexOf('MODX')>=0?'<span class="tag tmodx">'+esc(c)+'</span>':'<span class="tag tc">'+esc(c)+'</span>'}
+function cmsTag(c){if(c==='Drupal')return '<span class="tag tdrupal">'+esc(c)+'</span>';return c.indexOf('MODX')>=0?'<span class="tag tmodx">'+esc(c)+'</span>':'<span class="tag tc">'+esc(c)+'</span>'}
 
 function rSites(){var tl=D.sites.reduce(function(a,s){return a+s.links.length},0),cn=D.sites.filter(function(s){return s.connected}).length;var h='<div class="sec-header"><h1>Мои <span>сайты</span></h1><div style="display:flex;gap:8px;align-items:center">'+(tl?'<button class="btn bg bsm" id="exp-all">📥 Экспорт</button>':'')+'<button class="btn bp bsm" data-tab="add">+ Добавить</button></div></div>';h+='<div class="stats"><div class="stat-card"><div class="num">'+D.sites.length+'</div><div class="label">Сайтов</div></div><div class="stat-card"><div class="num">'+cn+'</div><div class="label">Подключено</div></div><div class="stat-card"><div class="num">'+tl+'</div><div class="label">Ссылок</div></div></div>';if(!D.sites.length)return h+'<div class="empty-state"><div class="icon">🌐</div><div class="title">Нет сайтов</div><div class="desc">Добавьте первый</div><button class="btn bp" data-tab="add">+ Добавить</button></div>';D.sites.forEach(function(s){h+='<div class="card'+(s.connected?' card-glow':'')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px"><div style="flex:1;min-width:200px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap"><span class="dot '+(s.connected?'dg':'dr')+'"></span><span style="font-size:17px;font-weight:700">'+esc(s.name)+'</span>'+cmsTag(s.cms)+(s.connected&&s.connectionMethod?'<span class="tag tm">● '+esc(s.connectionMethod)+'</span>':'')+'</div><div style="font-size:13px;color:var(--text3)">'+esc(s.url)+'</div><div style="font-size:12px;color:var(--text3);margin-top:4px"><span style="color:var(--accent2);font-weight:600">'+s.links.length+'</span> ссылок'+(s.lastCheck?' · '+fmt(s.lastCheck):'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bg bsm" data-do="conn" data-id="'+s.id+'">🔌 Связь</button><button class="btn bg bsm" data-do="chk" data-id="'+s.id+'" '+(D.ckid===s.id?'disabled':'')+'>'+(D.ckid===s.id?'⏳':'🔍')+' Проверить</button><button class="btn bsm '+(s.connected?'bp':'boff')+'" data-do="place" data-id="'+s.id+'">🔗 Разместить</button>'+(s.links.length?'<button class="btn bg bsm" data-do="export" data-id="'+s.id+'">📥</button>':'')+(D.cu&&D.cu.role==='admin'?'<button class="btn bd bsm" data-do="del" data-id="'+s.id+'">🗑</button>':'')+'</div></div>';if(s.links.length){h+='<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Ссылки</div>';s.links.forEach(function(l,li){h+='<div class="link-item"><span>'+(l.placement==='sitewide'?'🌐':'🏠')+'</span><span style="color:var(--text);flex:1;font-size:12px">'+esc((l.pv||l.html||'').substring(0,80))+'</span><span style="color:var(--text3);font-size:10px">'+fmt(l.at)+'</span><button class="link-del" data-do="rmlink" data-sid="'+s.id+'" data-lid="'+(l.id||'')+'" data-lidx="'+li+'">✕</button></div>'});h+='</div>'}h+='</div>'});return h}
 
-function rAdd(){return '<div style="max-width:520px"><div class="sec-header"><h1>Добавить <span>сайт</span></h1></div><div class="card" style="padding:28px"><div class="ig"><label class="lbl">Название</label><input class="inp" id="an" placeholder="Мой сайт"></div><div class="ig"><label class="lbl">URL</label><input class="inp" id="au" placeholder="https://example.com"></div><div class="ig"><label class="lbl">CMS</label><select class="inp" id="ac"><option value="WordPress">WordPress</option><option value="MODX Revolution">MODX Revolution</option><option value="MODX Evo">MODX Evolution</option><option disabled>Drupal (скоро)</option></select></div><button class="btn bp blg" style="width:100%;margin-top:8px" id="abtn">Добавить</button></div></div>'}
+function rAdd(){return '<div style="max-width:520px"><div class="sec-header"><h1>Добавить <span>сайт</span></h1></div><div class="card" style="padding:28px"><div class="ig"><label class="lbl">Название</label><input class="inp" id="an" placeholder="Мой сайт"></div><div class="ig"><label class="lbl">URL</label><input class="inp" id="au" placeholder="https://example.com"></div><div class="ig"><label class="lbl">CMS</label><select class="inp" id="ac"><option value="WordPress">WordPress</option><option value="MODX Revolution">MODX Revolution</option><option value="MODX Evo">MODX Evolution</option><option value="Drupal">Drupal 8/9/10+</option></select></div><button class="btn bp blg" style="width:100%;margin-top:8px" id="abtn">Добавить</button></div></div>'}
 
 function rLogs(){var h='<div class="sec-header"><h1>История <span>действий</span></h1></div>';if(!D.logs.length)return h+'<div class="empty-state"><div class="icon">📋</div><div class="title">Пусто</div></div>';h+='<div class="card" style="padding:8px 12px">';D.logs.slice().reverse().forEach(function(l){h+='<div class="lr"><span style="color:var(--text3);min-width:140px;font-size:12px">'+fmt(l.t)+'</span><span style="color:var(--accent2);min-width:50px;font-size:12px;font-weight:600">'+esc(l.u)+'</span><span style="color:var(--text);font-weight:600;min-width:120px;font-size:13px">'+esc(l.a)+'</span><span style="color:var(--text3);font-size:12px">'+esc(l.d||'')+'</span></div>'});return h+'</div>'}
 
@@ -186,6 +297,7 @@ function rModal(){if(!D.modal)return '';var site=gs(D.modal.sid);if(!site)return
       if(cc.dlBtn)inner+='<button class="btn bp" style="margin-top:16px" id="'+cc.dlBtn.id+'">'+cc.dlBtn.label+'</button>';
       if(cc.code)inner+='<div class="cb"><pre>'+esc(cc.code)+'</pre><button class="cp" id="cpcode">Копировать</button></div>';
       if(cc.hasPathInput)inner+='<div class="ig" style="margin-top:16px"><label class="lbl">Путь к файлу на сайте</label><input class="inp" id="inject-path" placeholder="/index.php" value="'+(site.injectPath||'/index.php')+'"><div style="font-size:11px;color:var(--text3);margin-top:6px">Укажите путь от корня сайта к файлу, в который вставили код. Например: <code>/index.php</code>, <code>/about/info.php</code></div></div>';
+      if(cc.hasDrupalAuth)inner+='<div style="margin-top:16px;padding:20px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2)"><div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-bottom:12px">Авторизация Drupal</div><div class="ig"><label class="lbl">Логин</label><input class="inp" id="drupal-user" placeholder="admin" value="'+esc(site.drupalUser||'')+'"></div><div class="ig" style="margin-bottom:0"><label class="lbl">Пароль</label><input class="inp" id="drupal-pass" type="password" placeholder="Пароль" value="'+esc(site.drupalPass||'')+'"></div></div>';
       if(cc.note)inner+='<div class="note-box">💡 '+cc.note+'</div>';
     }
     return '<div class="mo" id="ov"><div class="ml mm"><div class="mh"><h2>Подключение — '+esc(site.name)+'</h2><button class="mc" id="cx">✕</button></div>'+inner+'<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border)"><button class="btn bs2" id="mchk" '+(D.ckid?'disabled':'')+'>'+(D.ckid?'⏳':'🔍 Проверить')+'</button></div><div class="sb-box"><strong>Secret:</strong> <code>'+site.secret+'</code></div></div></div>';
@@ -196,6 +308,8 @@ function rModal(){if(!D.modal)return '';var site=gs(D.modal.sid);if(!site)return
 function bindAll(){document.querySelectorAll('[data-tab]').forEach(function(e){e.onclick=function(){D.tab=e.dataset.tab;render()}});var o=document.getElementById('out');if(o)o.onclick=function(){D.li=false;D.cu=null;render()};var ab=document.getElementById('abtn');if(ab)ab.onclick=function(){var n=document.getElementById('an').value.trim(),u=document.getElementById('au').value.trim();if(!n||!u)return notify('Заполните','error');if(u.indexOf('http')!==0)u='https://'+u;u=u.replace(/\/+$/,'');if(D.sites.some(function(s){return s.url===u}))return notify('Уже есть','error');D.sites.push({id:Date.now().toString(),url:u,name:n,cms:document.getElementById('ac').value,secret:gensec(),connected:false,connectionMethod:null,links:[],addedAt:new Date().toISOString(),lastCheck:null});log('Добавлен',u);D.tab='sites';notify('✅ Добавлен','success');render()};var ea=document.getElementById('exp-all');if(ea)ea.onclick=function(){exportAll()};document.querySelectorAll('[data-do]').forEach(function(e){e.onclick=function(){var id=e.dataset.id,idx=parseInt(e.dataset.idx),act=e.dataset.do;if(act==='conn'){D.modal={t:'conn',sid:id,v:null};render()}if(act==='chk')doCheck(id);if(act==='place'){D.modal={t:'place',sid:id};render()}if(act==='del'){if(confirm('Удалить?')){D.sites=D.sites.filter(function(s){return s.id!==id});sv();notify('Удалён');render()}}if(act==='delu'){D.users.splice(idx,1);sv();notify('Удалён');render()}if(act==='export')exportSite(id);if(act==='rmlink'){var sid=e.dataset.sid,lid=e.dataset.lid,lidx=parseInt(e.dataset.lidx);if(confirm('Удалить ссылку?'))doRemoveLink(sid,lid,lidx)}}});var cx=document.getElementById('cx');if(cx)cx.onclick=function(){D.modal=null;render()};var ov=document.getElementById('ov');if(ov)ov.onclick=function(e){if(e.target===ov){D.modal=null;render()}};document.querySelectorAll('[data-cv]').forEach(function(e){e.onclick=function(){if(D.modal)D.modal.v=e.dataset.cv==='back'?null:e.dataset.cv;render()}});if(D.modal&&D.modal.v){var site=gs(D.modal.sid);if(site){var cc=getConnectContent(D.modal.v,site);var dlb=document.getElementById('dl1');if(dlb&&cc.dlBtn)dlb.onclick=cc.dlBtn.fn;var cpb=document.getElementById('cpcode');if(cpb&&cc.code)cpb.onclick=function(){cpTxt(cc.code)}}}var mchk=document.getElementById('mchk');if(mchk&&D.modal)mchk.onclick=function(){
     var ipEl=document.getElementById('inject-path');
     if(ipEl&&D.modal){var ip=ipEl.value.trim();if(ip){if(ip[0]!=='/')ip='/'+ip;for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===D.modal.sid)D.sites[i].injectPath=ip}sv()}}
+    var duEl=document.getElementById('drupal-user'),dpEl=document.getElementById('drupal-pass');
+    if(duEl&&dpEl&&D.modal){for(var i=0;i<D.sites.length;i++){if(D.sites[i].id===D.modal.sid){D.sites[i].drupalUser=duEl.value.trim();D.sites[i].drupalPass=dpEl.value}}sv()}
     doCheck(D.modal.sid)};var gc=document.getElementById('gc');if(gc&&D.modal)gc.onclick=function(){D.modal={t:'conn',sid:D.modal.sid,v:null};render()};document.querySelectorAll('[data-pl]').forEach(function(e){e.onclick=function(){document.querySelectorAll('.pb').forEach(function(b){b.classList.remove('on')});e.classList.add('on')}});var dpl=document.getElementById('dpl');if(dpl&&D.modal)dpl.onclick=function(){doPlace(D.modal.sid)};var ubtn=document.getElementById('ubtn');if(ubtn)ubtn.onclick=function(){var i=document.getElementById('ui').value.trim(),n=document.getElementById('un').value.trim(),p=document.getElementById('up').value,r=document.getElementById('uur').value;if(!i||!n||!p)return notify('Заполните','error');if(D.users.some(function(u){return u.id===i}))return notify('ID занят','error');D.users.push({id:i,name:n,pass:p,role:r});sv();notify('✅ Добавлен','success');render()}}
 
 ld();render();
